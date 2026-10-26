@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useGames, useTeams, useSettings, fmtDate, useAllReplays } from '../hooks';
 import { storageHealth, type StorageHealth } from '../../db/db';
+import { loadSampleData, PRACTICE_TAG } from '../../db/sample';
 import type { Game } from '../../engine/types';
 
 function teamName(teams: { id: string; name: string; shortName?: string }[], id: string) {
@@ -30,25 +31,33 @@ export function HomePage() {
 
   const inProgress = games.filter((g) => g.status === 'in_progress' || g.status === 'setup' || g.status === 'suspended');
   const finals = games.filter((g) => g.status === 'final');
-  const unexported = finals.filter((g) => !g.lastExportedAt).length;
+  const unexported = finals.filter((g) => !g.lastExportedAt && g.notes !== PRACTICE_TAG).length;
   const noTeam = teams.filter((t) => t.isMine).length === 0;
 
   return (
     <div>
       <div className="row between" style={{ marginBottom: 12 }}>
         <h1>Dugout Dad</h1>
-        <button className="btn primary" onClick={() => nav('/games/new')} disabled={noTeam}>
-          + New game
-        </button>
+        <div className="row">
+          <Link className="btn sm" to="/help">How it works</Link>
+          <button className="btn primary" onClick={() => nav('/games/new')} disabled={noTeam}>
+            + New game
+          </button>
+        </div>
       </div>
 
       {noTeam && (
         <div className="card">
-          <h2>Start with your team</h2>
-          <p className="muted">Add the Rattlers and the roster once. After that, a new game takes a few taps.</p>
-          <Link className="btn primary block" to="/teams">
-            Set up my team
-          </Link>
+          <h2>First time here</h2>
+          <p className="muted">Try a practice game first to see how scoring feels, or set up your team and go.</p>
+          <div className="col">
+            <button className="btn primary block" onClick={async () => { const { liveGameId } = await loadSampleData(); nav(`/games/${liveGameId}/live`); }}>
+              Load a practice game
+            </button>
+            <Link className="btn block" to="/teams">
+              Set up my team
+            </Link>
+          </div>
         </div>
       )}
 
@@ -98,6 +107,7 @@ export function HomePage() {
                     </div>
                   )}
                   {g.status === 'setup' && <span className="pill">Setup</span>}
+                  {g.notes === PRACTICE_TAG && <span className="pill">Practice</span>}
                   <span className="chev">›</span>
                 </div>
               );
@@ -130,7 +140,7 @@ export function HomePage() {
                     {g.endReason && g.endReason !== 'regulation' ? ` · ${g.endReason.replace('_', ' ')}` : ''}
                   </div>
                 </div>
-                {!g.lastExportedAt && <span className="pill warn">Not exported</span>}
+                {g.notes === PRACTICE_TAG ? <span className="pill">Practice</span> : !g.lastExportedAt && <span className="pill warn">Not exported</span>}
                 <span className="chev">›</span>
               </div>
             );

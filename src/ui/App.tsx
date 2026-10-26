@@ -16,6 +16,7 @@ import { PitchingPage } from './pages/PitchingPage';
 import { TournamentsPage } from './pages/TournamentsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { ImportGameChangerPage } from './pages/ImportGameChangerPage';
+import { HelpPage } from './pages/HelpPage';
 import { requestPersistence } from '../db/db';
 
 const Icon = {
@@ -60,6 +61,7 @@ export function App() {
           <Route path="/transfer" element={<TransferPage />} />
           <Route path="/transfer/gamechanger" element={<ImportGameChangerPage />} />
           <Route path="/settings" element={<SettingsPage />} />
+          <Route path="/help" element={<HelpPage />} />
           <Route path="*" element={<Navigate to="/games" replace />} />
         </Routes>
       </main>
