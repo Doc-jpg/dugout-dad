@@ -4,7 +4,11 @@
 
 To install as an app and open with no signal, the iPhone needs the app served over HTTPS once. After that first load, the service worker keeps the whole app on the phone.
 
-## Option A: GitHub Pages (free, recommended)
+## Where it lives
+
+The app is published at **https://doc-jpg.github.io/dugout-dad/** from the repository https://github.com/Doc-jpg/dugout-dad. Every push to `main` redeploys it.
+
+## Option A: GitHub Pages (already set up)
 
 1. Create a GitHub repository (for example `dugout-dad`) and push this folder to its `main` branch. The repository can be private if the account's plan allows Pages on private repos; otherwise public is fine, the code contains no roster data (`data/private/` is ignored).
 2. In the repository: Settings, Pages, Source: **GitHub Actions**. The included workflow (`.github/workflows/pages.yml`) builds, runs the tests and deploys on every push.

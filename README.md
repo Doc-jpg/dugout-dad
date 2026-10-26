@@ -50,7 +50,7 @@ Needs Node.js (the script also tries Python if Node is missing). If neither is i
 
 ### On your iPhone
 
-The phone needs the app served over HTTPS to install it and run it offline. The simplest free host is GitHub Pages; the repo already contains the workflow. Once it is live at a URL, open it in Safari, tap Share, then **Add to Home Screen**. Full notes: `docs/IPHONE_SETUP.md`.
+The app is live at **https://doc-jpg.github.io/dugout-dad/**. Open it in Safari, tap Share, then **Add to Home Screen**. Open it once from the home screen while online; after that it works with no signal. Full notes: `docs/IPHONE_SETUP.md`.
 
 ### Weekend routine
 

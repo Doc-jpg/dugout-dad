@@ -2,6 +2,14 @@
 
 A running log, newest first. Keep adding to it; the point is that the next session starts from here.
 
+## 2026-10-26, hosted and practice mode
+
+- Repository: https://github.com/Doc-jpg/dugout-dad (Deren's personal GitHub, public; no roster data in it). Live app: https://doc-jpg.github.io/dugout-dad/ (GitHub Pages, deploys automatically on every push to main through .github/workflows/pages.yml). Verified on the live address: service worker installs, practice game loads, a play scores, reload with network off works.
+- Practice mode (src/db/sample.ts, Help page): loads the roster, a practice opponent, one finished game and one paused in the third inning; all tagged PRACTICE SAMPLE; one button removes them. Eight full games stored on a phone profile used 2.6 MB including the app itself.
+- Claude's GitHub connection for this repo is the Claude GitHub app installed on the Doc-jpg account, limited to this one repository.
+- The laptop copy under Claude Knowledge is a plain folder; git there is awkward because the mounted folder cannot delete lock files. Prefer: the laptop just opens the live address. The folder is the record.
+- Lesson: in the acceptance scripts, wait for a URL change after an async button, not for text that may already be on the page.
+
 ## 2026-10-25, initial build
 
 1. **One app for phone and laptop instead of PWA + SQLite + local API.** Reason: nothing has to be running for the dashboards, and one replay engine means the phone and laptop can never disagree. SQLite stays as an export. See ARCHITECTURE.md.
