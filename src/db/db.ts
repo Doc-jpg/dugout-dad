@@ -280,6 +280,21 @@ export interface StorageHealth {
   usageBytes: number | null;
   quotaBytes: number | null;
   supported: boolean;
+  /** Running from the home screen (installed), not inside a browser tab. */
+  installed: boolean;
+  /** Plain-English verdict for banners. 'safe' needs no warning. */
+  verdict: 'safe' | 'install' | 'unknown';
+  message: string;
+}
+
+/** True when the app was opened from a home-screen icon rather than a browser tab. */
+export function isInstalled(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return Boolean((window.navigator as any).standalone) || window.matchMedia('(display-mode: standalone)').matches || window.matchMedia('(display-mode: fullscreen)').matches;
+  } catch {
+    return false;
+  }
 }
 
 export async function storageHealth(): Promise<StorageHealth> {
@@ -298,7 +313,19 @@ export async function storageHealth(): Promise<StorageHealth> {
   } catch {
     /* ignore */
   }
-  return { persisted, usageBytes, quotaBytes, supported };
+  const installed = isInstalled();
+  // iPhone never answers the "persistent" question the way Chrome does, but an app opened from the
+  // home screen gets its own storage that iOS does not clear. Installed means safe; a browser tab means install.
+  let verdict: StorageHealth['verdict'] = 'unknown';
+  let message = 'Storage status unknown. Export after each weekend to be safe.';
+  if (installed || persisted === true) {
+    verdict = 'safe';
+    message = installed ? 'Installed on the home screen: games stay on this device until you delete them. Export after each weekend as the backup.' : 'Storage is persistent on this device. Export after each weekend as the backup.';
+  } else if (persisted === false || persisted === null) {
+    verdict = 'install';
+    message = 'Running in a browser tab. Add Dugout Dad to your home screen (Share, Add to Home Screen) so the browser cannot clear your games, and export after each weekend.';
+  }
+  return { persisted, usageBytes, quotaBytes, supported, installed, verdict, message };
 }
 
 /** Ask the browser to protect our data from eviction. iOS grants this for installed PWAs. */

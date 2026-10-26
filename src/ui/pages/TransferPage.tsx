@@ -123,8 +123,8 @@ export function TransferPage() {
       <h1 style={{ marginBottom: 12 }}>Transfer and backup</h1>
 
       {health && (
-        <div className={`banner ${health.persisted === false ? 'warn' : 'info'}`}>
-          Storage on this device: {health.persisted ? 'persistent' : health.persisted === false ? 'not marked persistent (install the app and keep exporting)' : 'status unknown'}
+        <div className={`banner ${health.verdict === 'install' ? 'warn' : 'info'}`}>
+          {health.message}
           {health.usageBytes != null ? ` · using ${(health.usageBytes / 1024 / 1024).toFixed(1)} MB` : ''}
           {health.quotaBytes != null ? ` of about ${Math.round(health.quotaBytes / 1024 / 1024)} MB available` : ''}
         </div>

@@ -61,10 +61,8 @@ export function HomePage() {
         </div>
       )}
 
-      {health && health.persisted === false && (
-        <div className="banner warn">
-          Storage is not yet marked persistent on this device. Install the app to your home screen and export after each weekend so nothing is lost if the browser clears data.
-        </div>
+      {health && health.verdict === 'install' && (
+        <div className="banner warn">{health.message}</div>
       )}
       {unexported >= (settings.exportReminderGames || 1) && (
         <div className="banner info row between">

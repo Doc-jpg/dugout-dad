@@ -99,11 +99,11 @@ export function SettingsPage() {
         </p>
         {health && (
           <p className="small muted">
-            Persistent storage: {health.persisted === true ? 'granted' : health.persisted === false ? 'not granted' : 'unknown'}
+            {health.message}
             {health.usageBytes != null ? ` · ${(health.usageBytes / 1024 / 1024).toFixed(1)} MB used` : ''}
           </p>
         )}
-        {health?.persisted === false && (
+        {health?.verdict === 'install' && (
           <button className="btn sm" onClick={async () => { const ok = await requestPersistence(); setHealth(await storageHealth()); toast.show(ok ? 'Persistent storage granted' : 'Browser declined; install the app and export regularly'); }}>Request persistent storage</button>
         )}
         <p className="small muted" style={{ marginTop: 8 }}>No account, no server, no tracking. Everything lives on this device until you export it. Dugout Dad {APP_VERSION}.</p>
