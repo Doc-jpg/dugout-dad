@@ -114,6 +114,7 @@ export function PAFlow({ replay, side, batter, level, players, onSave, onClose, 
     const prev = h.pop();
     setHistory(h);
     if (prev) setStep(prev);
+    else if (step === 'review') setStep('category'); // editing a saved play: Back goes to the choices, not out
     else onClose();
   };
 

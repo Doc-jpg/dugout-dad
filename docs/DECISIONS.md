@@ -8,6 +8,7 @@ A running log, newest first. Keep adding to it; the point is that the next sessi
 - Practice mode (src/db/sample.ts, Help page): loads the roster, a practice opponent, one finished game and one paused in the third inning; all tagged PRACTICE SAMPLE; one button removes them. Eight full games stored on a phone profile used 2.6 MB including the app itself.
 - Claude's GitHub connection for this repo is the Claude GitHub app installed on the Doc-jpg account, limited to this one repository.
 - The laptop copy under Claude Knowledge is a plain folder; git there is awkward because the mounted folder cannot delete lock files. Prefer: the laptop just opens the live address. The folder is the record.
+- Full-game stress test (`scripts/fullgame.cjs`, run with URL=... ): 59 actions over six innings with a double play, bases-loaded walk, caught stealing, pickoff, dropped third strike, sac bunt and fly, intentional walk, wild pitch, passed ball, mid-inning position swap, pitching change with runners on, wrong-batter fix, undo and redo, a missed half-inning credited through Fix, a score adjustment, editing a second-inning home run into a double from the Log in the sixth, end by time limit, reopen, score, end again. Every play's score, outs and runners checked. Bug found and fixed: in edit mode, Back closed the sheet instead of returning to the result choices.
 - Lesson: in the acceptance scripts, wait for a URL change after an async button, not for text that may already be on the page.
 
 ## 2026-10-25, initial build
