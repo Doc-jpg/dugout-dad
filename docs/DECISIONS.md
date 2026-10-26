@@ -8,6 +8,7 @@ A running log, newest first. Keep adding to it; the point is that the next sessi
 - Pitcher pitch counts and strike percentage update on every pitch for whichever side is pitching. The deciding pitch is never counted twice (if ball four or strike three was logged, the at-bat does not add it again). Catch-up at-bats with no logged pitches get no invented count; with logging on, a first-pitch ball in play is one pitch.
 - A side with nobody at pitcher gets a placeholder "Pitcher" when the game starts (unknown opponents), so their pitches have an owner; tap the pitcher's name to fill in name, number, throws.
 - Added: "Ball, runners moved" shortcut (ball then wild pitch or passed ball), pickoff attempts by the pitcher and back-picks by the catcher to any base (logged, no movement), Throws L/R on every player (roster editor and quick edit from the game screen), bats shown too.
+- Rule (Deren, 2026-10-26): the pitch result comes first; a wild pitch, passed ball, steal or back-pick is added on top of that pitch and never counts a second pitch. Wild pitch and passed ball therefore ask "That pitch was: Ball / Strike / Already logged" (default Already logged when the last tap was a pitch, else Ball). A passed ball on a strike is a real case.
 - Tests: 83. Scripts: `scripts/pitchgame.cjs` (34 checks: counts, fouls at two strikes, auto walk and strikeout, pitch totals and strike percentage both sides, pickoffs, undo of a pitch, placeholder pitcher, quick edit) and `scripts/fullgame.cjs` (59 checks, result-only mode).
 
 ## 2026-10-26, hosted and practice mode

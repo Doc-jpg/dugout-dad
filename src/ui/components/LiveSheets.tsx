@@ -32,7 +32,9 @@ const BR_KINDS: Array<{ v: BaserunningKind; l: string; perRunner: boolean }> = [
   { v: 'ADV_OTHER', l: 'Other advance', perRunner: true }
 ];
 
-export function BaserunningFlow({ replay, side, players, onSave, onClose, presetKinds }: { replay: ReplayResult; side: Side; players: Map<string, Player>; onSave: (p: BRPayload) => void; onClose: () => void; presetKinds?: BaserunningKind[] }) {
+export type PitchWas = 'ball' | 'strike' | 'logged';
+
+export function BaserunningFlow({ replay, side, players, onSave, onClose, presetKinds, lastEventWasPitch }: { replay: ReplayResult; side: Side; players: Map<string, Player>; onSave: (p: BRPayload, pitchWas?: PitchWas) => void; onClose: () => void; presetKinds?: BaserunningKind[]; lastEventWasPitch?: boolean }) {
   const bases = replay.state.bases;
   const fieldingSide = side === 'home' ? 'away' : 'home';
   const defense = replay.state[fieldingSide].defense;
@@ -42,6 +44,8 @@ export function BaserunningFlow({ replay, side, players, onSave, onClose, preset
   const [sequence, setSequence] = useState<Position[]>([]);
   const [errorPos, setErrorPos] = useState<Position | null>(null);
   const [step, setStep] = useState<'kind' | 'runner' | 'review'>('kind');
+  // Wild pitch and passed ball happen ON a pitch. The pitch is logged once, here or just before.
+  const [pitchWas, setPitchWas] = useState<PitchWas>(lastEventWasPitch ? 'logged' : 'ball');
   const runnersOn = ([3, 2, 1] as const).filter((b) => bases[b]);
   const kindDef = BR_KINDS.find((k) => k.v === kind);
 
@@ -65,7 +69,8 @@ export function BaserunningFlow({ replay, side, players, onSave, onClose, preset
   const save = () => {
     if (!kind) return;
     const errors: FieldingError[] = needsError && errorPos ? [{ position: errorPos, playerId: defense[errorPos], kind: 'throwing', official: true }] : [];
-    onSave({ type: 'baserunning', side, kind, runners: moves, pitcherId: defense[1], catcherId: defense[2], targetBase: runner ?? undefined, fielding: sequence.length || errors.length ? { sequence, errors } : undefined });
+    const onPitch = kind === 'WP' || kind === 'PB';
+    onSave({ type: 'baserunning', side, kind, runners: moves, pitcherId: defense[1], catcherId: defense[2], targetBase: runner ?? undefined, fielding: sequence.length || errors.length ? { sequence, errors } : undefined }, onPitch ? pitchWas : undefined);
   };
 
   return (
@@ -110,6 +115,19 @@ export function BaserunningFlow({ replay, side, players, onSave, onClose, preset
       )}
       {step === 'review' && (
         <>
+          {(kind === 'WP' || kind === 'PB') && (
+            <div className="card" style={{ padding: 10, marginBottom: 10 }}>
+              <div className="row between">
+                <strong>That pitch was</strong>
+                <div className="chips">
+                  <button className={`chip ${pitchWas === 'ball' ? 'on' : ''}`} onClick={() => setPitchWas('ball')}>Ball</button>
+                  <button className={`chip ${pitchWas === 'strike' ? 'on' : ''}`} onClick={() => setPitchWas('strike')}>Strike</button>
+                  <button className={`chip ${pitchWas === 'logged' ? 'on' : ''}`} onClick={() => setPitchWas('logged')}>Already logged</button>
+                </div>
+              </div>
+              <p className="muted small" style={{ margin: '6px 0 0' }}>{pitchWas === 'logged' ? 'No extra pitch is added; the runners move on the pitch you just tapped.' : 'The pitch is logged once, as part of this play.'}</p>
+            </div>
+          )}
           {isAttempt && <div className="banner info">Logged as a throw to {runner === 1 ? 'first' : runner === 2 ? 'second' : 'third'} that did not get the runner. If a runner moved on the throw, set it below; if he was out, use "Picked off (out)" instead.</div>}
           <RunnerReview bases={bases} batter={null} hideBatter moves={moves} onChange={setMoves} players={players} outsBefore={replay.state.outs} />
           {(kind === 'CS' || kind === 'PICKOFF' || kind === 'OUT_OTHER') && (

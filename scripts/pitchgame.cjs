@@ -84,10 +84,10 @@ function expect(label, got, want) { if (JSON.stringify(got) !== JSON.stringify(w
   await tap('walk confirm', async () => { await page.click(CONFIRM); });
   expect('after walk', await read(), { away: 0, home: 0, inning: 'Top 1', outs: 1, on: '110', count: '0-0', pitches: 16, strikePct: 56 });
 
-  // Ball, runners moved (wild pitch): both advance
-  await tap('ball + wild pitch', async () => { await page.click(B('Ball, runners moved')); await page.waitForSelector('.sheet'); await page.click(X('Wild pitch')); await page.click(CONFIRM); });
-  expect('after WP', await read(), { away: 0, home: 0, inning: 'Top 1', outs: 1, on: '011', count: '1-0', pitches: 17, strikePct: 53 });
-
+  // Way 1: tap Ball first, then Runner > Wild pitch; defaults to "already logged": still 17 pitches
+  await pitch('Ball');
+  await tap('runner > wild pitch after a tapped ball', async () => { await page.click(B('Runner SB')); await page.click(X('Wild pitch')); await page.click(CONFIRM); });
+  expect('after WP (pitch tapped first)', await read(), { away: 0, home: 0, inning: 'Top 1', outs: 1, on: '011', count: '1-0', pitches: 17, strikePct: 53 });
   // First-pitch (well, 1-0) sac fly scores one: pitches 18
   await inPlay('sac fly', [X('Out'), X('Sacrifice fly')], { fielders: ['CF'] });
   expect('after SF', await read(), { away: 1, home: 0, inning: 'Top 1', outs: 2, on: '010', count: '0-0', pitches: 18, strikePct: 56 });
@@ -96,10 +96,16 @@ function expect(label, got, want) { if (JSON.stringify(got) !== JSON.stringify(w
   await inPlay('hbp', [X('Hit by pitch')]);
   expect('after HBP', await read(), { away: 1, home: 0, inning: 'Top 1', outs: 2, on: '110', count: '0-0', pitches: 19, strikePct: 53 });
 
+  // Way 2: shortcut with no pitch tapped, defaults to Ball: one pitch added (20), runners on 1st and 2nd move up
+  await tap('shortcut wild pitch, pitch not yet tapped', async () => { await page.click('role=button[name=/Wild pitch/]'); await page.waitForSelector('.sheet'); await page.click(X('Wild pitch')); await page.click(CONFIRM); });
+  expect('after shortcut WP', await read(), { away: 1, home: 0, inning: 'Top 1', outs: 2, on: '011', count: '1-0', pitches: 20, strikePct: 50 });
+  // Way 3: passed ball on a STRIKE: choose Strike in the sheet; one pitch added (21), a strike; count 1-1; runner from 3rd scores
+  await tap('passed ball on a strike', async () => { await page.click(B('Runner SB')); await page.click(X('Passed ball')); await page.waitForSelector('.sheet'); await page.locator('.sheet').getByRole('button', { name: 'Strike', exact: true }).click(); await page.click(CONFIRM); });
+  expect('after PB on strike', await read(), { away: 2, home: 0, inning: 'Top 1', outs: 2, on: '001', count: '1-1', pitches: 21, strikePct: 52 });
   // Undo a pitch
-  await pitch('Ball'); expect('1-0', (await read()).count, '1-0');
+  await pitch('Ball'); expect('2-1', (await read()).count, '2-1');
   await tap('undo pitch', async () => { await page.click(B('Undo')); });
-  expect('undo restores 0-0', (await read()).count, '0-0');
+  expect('undo restores 1-1', (await read()).count, '1-1');
 
   // Groundout ends the inning; the count resets for the other side and the other pitcher has no pitches yet
   await pitch('Strike');
@@ -111,7 +117,7 @@ function expect(label, got, want) { if (JSON.stringify(got) !== JSON.stringify(w
   await pitch('Strike'); await pitch('Strike'); await pitch('Strike');
   await page.waitForSelector('.sheet');
   await tap('K looking', async () => { await page.click(X('Looking')); await page.click(CONFIRM); });
-  expect('our pitcher 3 pitches 100%', await read(), { away: 1, home: 0, inning: 'Bot 1', outs: 1, on: '000', count: '0-0', pitches: 3, strikePct: 100 });
+  expect('our pitcher 3 pitches 100%', await read(), { away: 2, home: 0, inning: 'Bot 1', outs: 1, on: '000', count: '0-0', pitches: 3, strikePct: 100 });
 
   // Catch-up at-bat with no pitches logged: no count added
   await inPlay('no pitches logged flyout', [X('Out'), X('Flyout')], { fielders: ['LF'] });
@@ -129,7 +135,7 @@ function expect(label, got, want) { if (JSON.stringify(got) !== JSON.stringify(w
   // Summary pitch totals: go to summary via End game
   await tap('end', async () => { await page.click('.live-actions >> role=button[name="End game"]'); await page.click(X('Time limit')); await page.waitForSelector('text=Play log'); });
   const body = await page.locator('body').innerText();
-  expect('summary has pitch column value 21 for their pitcher', /\b21\b/.test(body), true);
+  expect('summary has pitch column value 23 for their pitcher', /\b23\b/.test(body), true);
 
   console.log(`actions: ${n}, avg ${(ms / n).toFixed(0)} ms`);
   console.log(fails.length ? `FAILURES (${fails.length}):\n - ` + fails.join('\n - ') : 'ALL CHECKS PASSED');

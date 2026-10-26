@@ -7,7 +7,7 @@ import type { GameEvent, Side, Position, PlateAppearanceEvent, Half, PitchResult
 import { POSITION_LABEL, nowIso, outsToInnings } from '../../engine/types';
 import { scorebookNotation } from '../../engine/propose';
 import { PAFlow, type PAPayload } from '../components/PAFlow';
-import { BaserunningFlow, DefenseSheet, FixSheet, EndGameSheet, type BRPayload } from '../components/LiveSheets';
+import { BaserunningFlow, DefenseSheet, FixSheet, EndGameSheet, type BRPayload, type PitchWas } from '../components/LiveSheets';
 import { BasesWidget } from '../components/Diamond';
 import { Sheet, useToast } from '../components/Sheet';
 import { PlayerQuickEdit } from '../components/PlayerQuickEdit';
@@ -94,13 +94,18 @@ export function LiveGamePage() {
       const runs = payload.runners.filter((m) => m.to === 4).length;
       toast.show(`${scorebookNotation(payload.result, payload.fielding?.sequence)} saved${runs ? `, ${runs} run${runs > 1 ? 's' : ''}` : ''}${outs ? `, ${outs} out${outs > 1 ? 's' : ''}` : ''}`);
     });
-  const saveBR = (payload: BRPayload) =>
+  const saveBR = (payload: BRPayload, pitchWas?: PitchWas) =>
     guard(async () => {
+      // A wild pitch or passed ball rides on a pitch: log that pitch first unless it was already tapped.
+      if (pitchLogging && (pitchWas === 'ball' || pitchWas === 'strike')) {
+        await appendEvent(gameId, { type: 'pitch', side: battingSide, result: pitchWas } as any);
+      }
       await appendEvent(gameId, payload as any);
       setRedo([]);
       setOpen(null);
       toast.show('Saved');
     });
+  const lastEventWasPitch = lastEvent?.type === 'pitch';
   const saveDefense = (changes: Array<{ position: Position; playerId: string | null }>, reason: 'substitution' | 'swap' | 'pitching_change') =>
     guard(async () => {
       await appendEvent(gameId, { type: 'defense_change', side: fieldingSideForDefense, changes, reason } as any);
@@ -205,8 +210,8 @@ export function LiveGamePage() {
           </div>
           <div>
             <div className="label">Pitching · {nameOf(fieldingSide)}</div>
-            <button style={{ fontWeight: 600, background: 'none', border: 0, padding: 0, textAlign: 'left', fontSize: 16 }} onClick={() => pitcherId && setOpen('edit_pitcher')}>
-              {pitcherId ? playerName(players.get(pitcherId)) : <span className="muted">not set</span>}
+            <button style={{ fontWeight: 600, background: 'none', border: 0, padding: 0, textAlign: 'left', fontSize: 16 }} onClick={() => { if (pitcherId) setOpen('edit_pitcher'); else { setDefenseSide(fieldingSide); setOpen('defense'); } }}>
+              {pitcherId ? playerName(players.get(pitcherId)) : <span className="muted">not set, tap to pick</span>}
               {pitcherId && players.get(pitcherId)?.throws && <span className="pill" style={{ marginLeft: 6 }}>{players.get(pitcherId)!.throws}HP</span>}
               {pitcherId && (() => { const l = replay.pitcherLines.find((x) => x.pitcherId === pitcherId); if (!l) return null; const pct = l.pitchSource === 'pitch_by_pitch' && l.pitches ? Math.round(((l.strikes ?? 0) / l.pitches) * 100) : null; return <span className="muted small"> · {outsToInnings(l.outs)} IP{l.pitches != null ? `, ${l.pitches} P` : ''}{pct != null ? ` (${pct}% strikes)` : ''}</span>; })()}
             </button>
@@ -238,8 +243,8 @@ export function LiveGamePage() {
           </button>
         </div>
         {pitchLogging && (st.bases[1] || st.bases[2] || st.bases[3]) && !st.ended && (
-          <button className="btn block" style={{ marginTop: 10 }} disabled={busy} onClick={() => guard(async () => { await appendEvent(gameId, { type: 'pitch', side: battingSide, result: 'ball' } as any); setRedo([]); setOpen('run_wild'); })}>
-            Ball, runners moved <span className="muted small">(wild pitch or passed ball)</span>
+          <button className="btn block" style={{ marginTop: 10 }} disabled={busy} onClick={() => setOpen('run_wild')}>
+            Wild pitch / passed ball <span className="muted small">(runners moved on the pitch)</span>
           </button>
         )}
         <div className="secondary-actions" style={{ marginTop: 10 }}>
@@ -290,8 +295,8 @@ export function LiveGamePage() {
           loggedPitches={pitchLogging ? pending.length : undefined}
         />
       )}
-      {open === 'run' && <BaserunningFlow replay={replay} side={battingSide} players={players} onSave={saveBR} onClose={() => setOpen(null)} />}
-      {open === 'run_wild' && <BaserunningFlow replay={replay} side={battingSide} players={players} presetKinds={['WP', 'PB']} onSave={saveBR} onClose={() => setOpen(null)} />}
+      {open === 'run' && <BaserunningFlow replay={replay} side={battingSide} players={players} onSave={saveBR} onClose={() => setOpen(null)} lastEventWasPitch={lastEventWasPitch} />}
+      {open === 'run_wild' && <BaserunningFlow replay={replay} side={battingSide} players={players} presetKinds={['WP', 'PB']} onSave={saveBR} onClose={() => setOpen(null)} lastEventWasPitch={lastEventWasPitch} />}
       {open === 'edit_pitcher' && pitcherId && players.get(pitcherId) && <PlayerQuickEdit player={players.get(pitcherId)!} onClose={() => setOpen(null)} />}
       {open === 'edit_batter' && cb.slot && players.get(cb.slot.playerId) && <PlayerQuickEdit player={players.get(cb.slot.playerId)!} onClose={() => setOpen(null)} />}
       {open === 'defense' && (
