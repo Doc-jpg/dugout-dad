@@ -90,6 +90,7 @@ function expect(label, got, want) {
   await page.click('role=button[name="New opponent"s]');
   await page.fill('input[placeholder*="Opponent name"]', 'Stress Test Sluggers');
   await page.click('role=button[name="Enhanced"s]');
+  await page.locator('label.switch input[type=checkbox]').first().uncheck(); // this run scores results only, no pitch logging
   await page.waitForTimeout(300);
   await page.click('text=Next: lineups');
   await page.waitForSelector('text=Lineups');
@@ -177,7 +178,7 @@ function expect(label, got, want) {
   // ---------- TOP 4: fielders choice, pickoff, sac bunt, intentional walk, D3K ----------
   await pa('T4 single', [X('Hit'), X('Single')], { skip: true, want: { away: 4, home: 5, inning: 'Top 4', outs: 0, on: '100' } });
   await pa("T4 fielder's choice 6-4", [X("Fielder's choice")], { fielders: ['SS', '2B'], next: true, want: { away: 4, home: 5, inning: 'Top 4', outs: 1, on: '100' } });
-  await runner('T4 picked off', 'Picked off', null, { away: 4, home: 5, inning: 'Top 4', outs: 2, on: '000' });
+  await runner('T4 picked off', 'Picked off (out)', null, { away: 4, home: 5, inning: 'Top 4', outs: 2, on: '000' });
   await pa('T4 D3K reaches', [X('Strikeout'), X('Dropped 3rd strike, batter safe')], { want: { away: 4, home: 5, inning: 'Top 4', outs: 2, on: '100' } });
   await pa('T4 sac bunt advances (1 out: ends inning)', [X('Out'), X('Sacrifice bunt')], { fielders: ['C', '1B'], next: true, want: { away: 4, home: 5, inning: 'Bot 4', outs: 0, on: '000' } });
 

@@ -183,6 +183,7 @@ export function TeamDetailPage() {
               <div className="sub">
                 {STATUS_LABEL[p.status]}
                 {p.bats ? ` · bats ${p.bats}` : ''}
+                {p.throws ? ` · throws ${p.throws}` : ''}
               </div>
             </div>
             <span className="chev">›</span>
@@ -264,6 +265,7 @@ function PlayerEditor({ teamId, player, isFocus, onClose, onMerge }: { teamId: s
   const [last, setLast] = useState(player?.lastName ?? '');
   const [number, setNumber] = useState(player?.number ?? '');
   const [bats, setBats] = useState<Player['bats'] | ''>(player?.bats ?? '');
+  const [throws, setThrows] = useState<Player['throws'] | ''>(player?.throws ?? '');
   const [status, setStatus] = useState<PlayerStatus>(player?.status ?? 'regular');
   const [focus, setFocus] = useState(isFocus || !!player?.isFocus);
   const [del, setDel] = useState(false);
@@ -274,6 +276,7 @@ function PlayerEditor({ teamId, player, isFocus, onClose, onMerge }: { teamId: s
       lastName: last.trim(),
       number: number.trim() || undefined,
       bats: bats || undefined,
+      throws: throws || undefined,
       status,
       isFocus: focus,
       isPlaceholder: !first.trim() && !last.trim() ? true : false
@@ -282,7 +285,7 @@ function PlayerEditor({ teamId, player, isFocus, onClose, onMerge }: { teamId: s
       await updatePlayer(player.id, patch);
       if (focus) await saveSettings({ focusPlayerId: player.id });
     } else {
-      const p = await createPlayer({ teamId, firstName: patch.firstName!, lastName: patch.lastName!, number: patch.number, bats: patch.bats, status, isFocus: focus });
+      const p = await createPlayer({ teamId, firstName: patch.firstName!, lastName: patch.lastName!, number: patch.number, bats: patch.bats, throws: patch.throws, status, isFocus: focus });
       if (focus) await saveSettings({ focusPlayerId: p.id });
     }
     onClose();
@@ -327,6 +330,14 @@ function PlayerEditor({ teamId, player, isFocus, onClose, onMerge }: { teamId: s
             <option value="S">Switch</option>
           </select>
         </div>
+      </div>
+      <div className="field">
+        <label>Throws (pitching hand)</label>
+        <select className="input" value={throws ?? ''} onChange={(e) => setThrows(e.target.value as any)}>
+          <option value="">Unknown</option>
+          <option value="R">Right (RHP)</option>
+          <option value="L">Left (LHP)</option>
+        </select>
       </div>
       <div className="field">
         <label>Roster status</label>

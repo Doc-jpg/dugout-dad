@@ -52,6 +52,14 @@ export function LineupPage() {
   const save = async () => {
     for (const s of ['home', 'away'] as Side[]) {
       const d = drafts[s];
+      // A side with nobody at pitcher gets a placeholder so pitches and pitching lines have an owner.
+      // Rename it from the game screen (tap the pitcher's name) once you know who it is.
+      if (d.slots.length && !d.defense[1]) {
+        const tid = s === mySide ? game.teamId : game.opponentTeamId;
+        const existing = (await db.players.where('teamId').equals(tid).toArray()).find((p) => p.isPlaceholder && /^Pitcher/.test(p.lastName));
+        const p = existing ?? (await createPlaceholderPlayer(tid, 'Pitcher'));
+        d.defense = { ...d.defense, 1: p.id };
+      }
       const slots = d.slots.map((sl, i) => ({ slot: i + 1, playerId: sl.playerId, position: (Object.entries(d.defense).find(([, pid]) => pid === sl.playerId)?.[0] ?? 0) as unknown as Position }));
       if (slots.length) await appendEvent<LineupSetEvent>(gameId, { type: 'lineup_set', side: s, slots } as any);
       if (Object.keys(d.defense).length) await appendEvent<DefenseSetEvent>(gameId, { type: 'defense_set', side: s, assignments: d.defense } as any);

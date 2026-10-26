@@ -124,6 +124,8 @@ export interface Game {
   gameType?: 'pool' | 'bracket' | 'friendly' | 'league' | 'scrimmage' | 'other';
   rules: GameRules;
   scoringLevel: ScoringLevel;
+  /** Log every pitch (ball, strike, foul) on the live screen. Default true for new games. */
+  pitchLogging?: boolean;
   status: GameStatus;
   endReason?: GameEndReason;
   /** How much of the opponent's offense was captured. */
@@ -245,6 +247,9 @@ export interface RunnerMove {
   note?: string;
 }
 
+/** Target base for pickoff attempts and back-picks. */
+export type PickoffTarget = 1 | 2 | 3;
+
 export interface PitchDetail {
   balls?: number;
   strikes?: number;
@@ -260,6 +265,7 @@ export interface PitchDetail {
 }
 
 export type GameEvent =
+  | PitchEvent
   | LineupSetEvent
   | DefenseSetEvent
   | DefenseChangeEvent
@@ -320,6 +326,14 @@ export interface LineupChangeEvent extends EventBase {
   base?: 1 | 2 | 3;
 }
 
+/** One pitch that was not put in play: ball, strike, or foul. The pitch that ends the at-bat is implied by the plate appearance. */
+export type PitchResult = 'ball' | 'strike' | 'strike_looking' | 'strike_swinging' | 'foul';
+export interface PitchEvent extends EventBase {
+  type: 'pitch';
+  side: Side; // batting side
+  result: PitchResult;
+}
+
 export interface PlateAppearanceEvent extends EventBase {
   type: 'plate_appearance';
   side: Side; // batting side
@@ -341,7 +355,11 @@ export interface PlateAppearanceEvent extends EventBase {
 
 export type BaserunningKind =
   | 'SB' | 'CS' | 'PICKOFF' | 'PICKOFF_ERROR' | 'WP' | 'PB' | 'BALK'
-  | 'ADV_ERROR' | 'ADV_THROW' | 'ADV_OTHER' | 'OUT_OTHER' | 'DEFENSIVE_INDIFFERENCE';
+  | 'ADV_ERROR' | 'ADV_THROW' | 'ADV_OTHER' | 'OUT_OTHER' | 'DEFENSIVE_INDIFFERENCE'
+  /** Pickoff throw by the pitcher that did not get the runner (logged, no movement). */
+  | 'PICKOFF_ATTEMPT'
+  /** Back-pick throw by the catcher after a pitch that did not get the runner. */
+  | 'BACK_PICK';
 
 /** Events between plate appearances. */
 export interface BaserunningEvent extends EventBase {
@@ -352,6 +370,8 @@ export interface BaserunningEvent extends EventBase {
   pitcherId?: ID;
   catcherId?: ID;
   fielding?: FieldingRecord;
+  /** For PICKOFF_ATTEMPT / BACK_PICK / PICKOFF: the base thrown to. */
+  targetBase?: PickoffTarget;
 }
 
 /** Manual pitch count for the current pitcher (Level A/B). */

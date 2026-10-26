@@ -489,6 +489,8 @@ export interface PitchingLine {
   wp: number;
   bk: number;
   pik: number;
+  /** Pickoff throws that did not get the runner (logged attempts). */
+  pickoffAttempts: number;
   sb: number;
   cs: number;
   era: number | null;
@@ -515,7 +517,7 @@ export interface PitchingLine {
 export function emptyPitchingLine(playerId: string): PitchingLine {
   return {
     playerId, games: 0, gs: 0, outs: 0, ipText: '0.0', bf: 0, abAgainst: 0, h: 0, r: 0, er: 0, erBasis: 'calculated',
-    bb: 0, ibb: 0, so: 0, soLooking: 0, hbp: 0, hr: 0, wp: 0, bk: 0, pik: 0, sb: 0, cs: 0,
+    bb: 0, ibb: 0, so: 0, soLooking: 0, hbp: 0, hr: 0, wp: 0, bk: 0, pik: 0, pickoffAttempts: 0, sb: 0, cs: 0,
     era: null, whip: null, baa: null, bbPerInn: null, kPerBf: null, kPerBb: null,
     pitches: null, pitchesKnownAppearances: 0, appearances: 0, pPerIp: null, pPerBf: null, strikePct: null, fpsPct: null,
     inherited: 0, bequeathed: 0, coverage: { pitches: { recorded: 0, of: 0 } }
@@ -591,6 +593,7 @@ function aggregatePitching(
       l.wp += pl.wildPitches;
       l.bk += pl.balks;
       l.pik += pl.pickoffs;
+      l.pickoffAttempts += pl.pickoffAttempts ?? 0;
       l.sb += pl.stolenBasesAllowed;
       l.cs += pl.caughtStealing;
       l.inherited += pl.inheritedRunners;

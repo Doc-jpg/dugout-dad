@@ -50,8 +50,8 @@ export function SettingsPage() {
         <div className="field">
           <label>Default scoring depth for new games</label>
           <div className="chips">
-            {(['A', 'B', 'C'] as ScoringLevel[]).map((l) => (
-              <button key={l} className={`chip ${settings.defaultScoringLevel === l ? 'on' : ''}`} onClick={() => set({ defaultScoringLevel: l })}>{l === 'A' ? 'Quick' : l === 'B' ? 'Enhanced' : 'Full'}</button>
+            {(['A', 'B'] as ScoringLevel[]).map((l) => (
+              <button key={l} className={`chip ${settings.defaultScoringLevel === l ? 'on' : ''}`} onClick={() => set({ defaultScoringLevel: l })}>{l === 'A' ? 'Quick' : 'Enhanced'}</button>
             ))}
           </div>
         </div>

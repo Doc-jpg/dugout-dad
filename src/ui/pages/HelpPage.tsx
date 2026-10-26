@@ -52,7 +52,11 @@ export function HelpPage() {
         <ol style={{ paddingLeft: 20, margin: '6px 0 0' }} className="col">
           <li><strong>New game.</strong> Opponent name (or "Unknown"), are we home or away, date. Tap Next.</li>
           <li><strong>Lineups.</strong> Tap your players in batting order. Tap Defense, then "Fill from batting order", then fix any spots by tapping a position and a player. For the other team, tap "Unknown lineup: 9 batters" unless you know their names. Tap Start game.</li>
-          <li><strong>Each at-bat:</strong> tap <strong>Record at-bat</strong>, then what happened. Strikeout, Swinging, Confirm. Hit, Single, Skip, Confirm. Out, Groundout, tap the shortstop then first base, Next, Confirm. The app proposes where the runners went; change a chip if it guessed wrong.</li>
+          <li><strong>Each pitch:</strong> tap <strong>Ball</strong>, <strong>Strike</strong> or <strong>Foul</strong>. The count shows next to the batter. Ball four opens the walk with the forced runners already set; strike three asks swinging or looking. A foul with two strikes counts a pitch and a strike for the pitcher and leaves the count alone.</li>
+          <li><strong>Ball put in play:</strong> tap <strong>In play</strong>, then what happened. Hit, Single, Skip, Confirm. Out, Groundout, tap the shortstop then first base, Next, Confirm. The app proposes where the runners went; change a chip if it guessed wrong. That last pitch is counted as a strike for the pitcher automatically, so a full count and then a single is six pitches, three and three.</li>
+          <li><strong>Pitch got away with runners on:</strong> tap <strong>Ball, runners moved</strong>, then wild pitch or passed ball, then where each runner ended up.</li>
+          <li><strong>Pickoff throws:</strong> <strong>Runner</strong>, then "Pickoff attempt (pitcher)" or "Back-pick (catcher)" and which base. If the runner was out, use "Picked off (out)".</li>
+          <li><strong>Lefty or righty:</strong> tap the pitcher's name (or the batter's name, then Edit) to set throws, bats, name and number as you learn them. Works for the other team too.</li>
           <li><strong>Between at-bats</strong> (steal, wild pitch, passed ball, pickoff): tap <strong>Runner</strong>.</li>
           <li><strong>Someone moved positions or a new pitcher came in:</strong> tap <strong>Defense</strong>, tap the position, tap the player. Picking a player who is already in the field swaps the two.</li>
           <li><strong>You missed something:</strong> tap <strong>Fix</strong>. Add runs the other team scored while you were talking, set the inning and outs to match the scoreboard, enter a pitch count, or leave a note. The app records that you fixed it instead of making up plays.</li>
@@ -62,8 +66,8 @@ export function HelpPage() {
       </div>
 
       <div className="card">
-        <h2>Quick, Enhanced, Full</h2>
-        <p className="small">Quick is the result and the runners, nothing else. Enhanced adds optional contact detail (ground ball or line drive, soft or hard, tap where it went on the field) and pitch counts; you can skip all of it on any play. Full adds pitch by pitch. Switch any time from the button at the top right of the game screen.</p>
+        <h2>Quick, Enhanced, pitches</h2>
+        <p className="small">Quick is the result and the runners, nothing else. Enhanced adds optional contact detail (ground ball or line drive, soft or hard, tap where it went on the field); you can skip all of it on any play. "Log every pitch" is a separate switch, on by default. Change any of it from the button at the top right of the game screen.</p>
       </div>
 
       <div className="card">

@@ -2,16 +2,17 @@ import React, { useMemo, useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { useGame, useEvents, usePlayerMap, useTeams, useSettings, useOnline } from '../hooks';
 import { appendEvent, undoLastEvent, insertEventAt, setGameStatus, db, playerName } from '../../db/db';
-import { replayGame, currentBatter, type ReplayResult } from '../../engine/reducer';
-import type { GameEvent, Side, Position, PlateAppearanceEvent, Half } from '../../engine/types';
+import { replayGame, currentBatter, pitchDetailFor, type ReplayResult } from '../../engine/reducer';
+import type { GameEvent, Side, Position, PlateAppearanceEvent, Half, PitchResult, PAResult } from '../../engine/types';
 import { POSITION_LABEL, nowIso, outsToInnings } from '../../engine/types';
 import { scorebookNotation } from '../../engine/propose';
 import { PAFlow, type PAPayload } from '../components/PAFlow';
 import { BaserunningFlow, DefenseSheet, FixSheet, EndGameSheet, type BRPayload } from '../components/LiveSheets';
 import { BasesWidget } from '../components/Diamond';
 import { Sheet, useToast } from '../components/Sheet';
+import { PlayerQuickEdit } from '../components/PlayerQuickEdit';
 
-type Open = null | 'pa' | 'run' | 'defense' | 'fix' | 'end' | 'batter' | 'level';
+type Open = null | 'pa' | 'pa_walk' | 'pa_k' | 'run' | 'run_wild' | 'defense' | 'fix' | 'end' | 'batter' | 'level' | 'edit_pitcher' | 'edit_batter';
 
 export function LiveGamePage() {
   const { gameId = '' } = useParams();
@@ -60,8 +61,32 @@ export function LiveGamePage() {
     }
   };
 
+  const pitchLogging = game.pitchLogging !== false;
+  const count = st.count;
+  const pending = st.pendingPitches;
+
+  const recordPitch = (result: PitchResult) =>
+    guard(async () => {
+      await appendEvent(gameId, { type: 'pitch', side: battingSide, result } as any);
+      setRedo([]);
+      // What the count will be after this pitch
+      const balls = count.balls + (result === 'ball' ? 1 : 0);
+      const strikes = count.strikes + (result === 'ball' ? 0 : result === 'foul' ? (count.strikes < 2 ? 1 : 0) : 1);
+      if (balls >= 4) setOpen('pa_walk');
+      else if (strikes >= 3) setOpen('pa_k');
+    });
+
+  /** Attach the logged pitches (plus the implied final pitch) when pitch logging is on and nothing explicit was entered. */
+  const withPitches = (payload: PAPayload): PAPayload => {
+    if (!pitchLogging) return payload;
+    if (payload.pitches?.pitches?.length) return payload;
+    if (payload.pitches?.total != null && !pending.length) return payload; // manual catch-up total
+    return { ...payload, pitches: pitchDetailFor(pending, payload.result) };
+  };
+
   const savePA = (payload: PAPayload) =>
     guard(async () => {
+      payload = withPitches(payload);
       await appendEvent<PlateAppearanceEvent>(gameId, payload as any);
       setRedo([]);
       setOpen(null);
@@ -129,7 +154,7 @@ export function LiveGamePage() {
         <div className="row">
           {!online && <span className="pill">Offline, saving on device</span>}
           <Link to={`/games/${gameId}/log`} className="btn ghost sm">Log</Link>
-          <button className="btn ghost sm" onClick={() => setOpen('level')}>{game.scoringLevel === 'A' ? 'Quick' : game.scoringLevel === 'B' ? 'Enhanced' : 'Full'}</button>
+          <button className="btn ghost sm" onClick={() => setOpen('level')}>{game.scoringLevel === 'A' ? 'Quick' : 'Enhanced'}{pitchLogging ? ' · pitches' : ''}</button>
         </div>
       </div>
 
@@ -180,23 +205,43 @@ export function LiveGamePage() {
           </div>
           <div>
             <div className="label">Pitching · {nameOf(fieldingSide)}</div>
-            <div style={{ fontWeight: 600 }}>
+            <button style={{ fontWeight: 600, background: 'none', border: 0, padding: 0, textAlign: 'left', fontSize: 16 }} onClick={() => pitcherId && setOpen('edit_pitcher')}>
               {pitcherId ? playerName(players.get(pitcherId)) : <span className="muted">not set</span>}
-              {pitcherId && (() => { const l = replay.pitcherLines.find((x) => x.pitcherId === pitcherId); return l ? <span className="muted small"> · {outsToInnings(l.outs)} IP{l.pitches != null ? `, ${l.pitches} P` : ''}</span> : null; })()}
-            </div>
+              {pitcherId && players.get(pitcherId)?.throws && <span className="pill" style={{ marginLeft: 6 }}>{players.get(pitcherId)!.throws}HP</span>}
+              {pitcherId && (() => { const l = replay.pitcherLines.find((x) => x.pitcherId === pitcherId); if (!l) return null; const pct = l.pitchSource === 'pitch_by_pitch' && l.pitches ? Math.round(((l.strikes ?? 0) / l.pitches) * 100) : null; return <span className="muted small"> · {outsToInnings(l.outs)} IP{l.pitches != null ? `, ${l.pitches} P` : ''}{pct != null ? ` (${pct}% strikes)` : ''}</span>; })()}
+            </button>
           </div>
+          {pitchLogging && (
+            <div className="row" style={{ gap: 10 }}>
+              <span className="label">Count</span>
+              <strong className="num" style={{ fontSize: 22 }}>{count.balls}-{count.strikes}</strong>
+              {pending.length > 0 && <span className="muted small">{pending.length} pitch{pending.length === 1 ? '' : 'es'} this at-bat</span>}
+            </div>
+          )}
           {lastDesc && <div className="small muted">Last: {lastDesc}</div>}
         </div>
         <BasesWidget bases={st.bases} players={players} />
       </div>
 
       <div className="live-actions">
+        {pitchLogging && (
+          <div className="btn-grid cols-3" style={{ marginBottom: 10 }}>
+            <button className="btn walk" style={{ minHeight: 64, fontSize: 20 }} disabled={st.ended || oppScoreboardOnly || !cb.slot || busy} onClick={() => recordPitch('ball')}>Ball</button>
+            <button className="btn out" style={{ minHeight: 64, fontSize: 20 }} disabled={st.ended || oppScoreboardOnly || !cb.slot || busy} onClick={() => recordPitch('strike')}>Strike</button>
+            <button className="btn" style={{ minHeight: 64, fontSize: 20 }} disabled={st.ended || oppScoreboardOnly || !cb.slot || busy} onClick={() => recordPitch('foul')}>Foul</button>
+          </div>
+        )}
         <div className="btn-grid">
           <button className="btn primary lg" style={{ gridColumn: '1 / -1', minHeight: 72, fontSize: 20 }} disabled={st.ended || oppScoreboardOnly || !cb.slot} onClick={() => setOpen('pa')}>
-            Record at-bat
-            <span className="sub">hit · out · strikeout · walk · error</span>
+            {pitchLogging ? 'In play' : 'Record at-bat'}
+            <span className="sub">{pitchLogging ? 'hit · out · error · hit by pitch' : 'hit · out · strikeout · walk · error'}</span>
           </button>
         </div>
+        {pitchLogging && (st.bases[1] || st.bases[2] || st.bases[3]) && !st.ended && (
+          <button className="btn block" style={{ marginTop: 10 }} disabled={busy} onClick={() => guard(async () => { await appendEvent(gameId, { type: 'pitch', side: battingSide, result: 'ball' } as any); setRedo([]); setOpen('run_wild'); })}>
+            Ball, runners moved <span className="muted small">(wild pitch or passed ball)</span>
+          </button>
+        )}
         <div className="secondary-actions" style={{ marginTop: 10 }}>
           <button className="btn" onClick={() => setOpen('run')} disabled={st.ended}>
             <span>Runner</span><span className="muted">SB · WP · PB</span>
@@ -230,7 +275,7 @@ export function LiveGamePage() {
         </details>
       )}
 
-      {open === 'pa' && cb.slot && (
+      {(open === 'pa' || open === 'pa_walk' || open === 'pa_k') && cb.slot && (
         <PAFlow
           replay={replay}
           side={battingSide}
@@ -240,9 +285,15 @@ export function LiveGamePage() {
           onSave={savePA}
           onClose={() => setOpen(null)}
           onChangeBatter={() => setOpen('batter')}
+          startResult={open === 'pa_walk' ? 'BB' : undefined}
+          startStep={open === 'pa_k' ? 'k' : undefined}
+          loggedPitches={pitchLogging ? pending.length : undefined}
         />
       )}
       {open === 'run' && <BaserunningFlow replay={replay} side={battingSide} players={players} onSave={saveBR} onClose={() => setOpen(null)} />}
+      {open === 'run_wild' && <BaserunningFlow replay={replay} side={battingSide} players={players} presetKinds={['WP', 'PB']} onSave={saveBR} onClose={() => setOpen(null)} />}
+      {open === 'edit_pitcher' && pitcherId && players.get(pitcherId) && <PlayerQuickEdit player={players.get(pitcherId)!} onClose={() => setOpen(null)} />}
+      {open === 'edit_batter' && cb.slot && players.get(cb.slot.playerId) && <PlayerQuickEdit player={players.get(cb.slot.playerId)!} onClose={() => setOpen(null)} />}
       {open === 'defense' && (
         <DefenseSheet
           replay={replay}
@@ -272,15 +323,22 @@ export function LiveGamePage() {
                   {cb.slot?.slot === s.slot && <span className="pill ok">up</span>}
                 </button>
               ))}
-              <Link className="btn sm" to={`/games/${gameId}/lineup`}>Edit lineups</Link>
+              <div className="row">
+                <Link className="btn sm" to={`/games/${gameId}/lineup`}>Edit lineups</Link>
+                {cb.slot && <button className="btn sm" onClick={() => setOpen('edit_batter')}>Edit {playerName(players.get(cb.slot.playerId), 'short')} (name, number, bats)</button>}
+              </div>
             </div>
           )}
         </Sheet>
       )}
       {open === 'level' && (
         <Sheet title="Scoring depth" onClose={() => setOpen(null)}>
+          <label className="switch" style={{ marginBottom: 12 }}>
+            <span><strong>Log every pitch</strong><br /><span className="muted small">Ball, Strike, Foul buttons and the count. Pitch counts and strike percentage for both pitchers.</span></span>
+            <input type="checkbox" checked={pitchLogging} onChange={async (e) => { await db.games.update(gameId, { pitchLogging: e.target.checked, updatedAt: nowIso() }); }} style={{ width: 24, height: 24 }} />
+          </label>
           <div className="col">
-            {([['A', 'Quick', 'Result, outs, runs, runners, positions.'], ['B', 'Enhanced', 'Adds contact quality, hit location, fielding detail, pitch totals.'], ['C', 'Full', 'Adds pitch-by-pitch.']] as const).map(([lv, name, desc]) => (
+            {([['A', 'Quick', 'Result, outs, runs, runners, positions.'], ['B', 'Enhanced', 'Adds optional contact quality, hit location and fielding detail on each play.']] as const).map(([lv, name, desc]) => (
               <button key={lv} className={`btn lg ${game.scoringLevel === lv ? 'selected' : ''}`} style={{ justifyContent: 'flex-start', textAlign: 'left' }} onClick={async () => { await db.games.update(gameId, { scoringLevel: lv, updatedAt: nowIso() }); setOpen(null); }}>
                 <span><strong>{name}</strong><br /><span className="muted small">{desc}</span></span>
               </button>
@@ -297,12 +355,15 @@ export function LiveGamePage() {
 export function describeEvent(ev: GameEvent, players: Map<string, { firstName: string; lastName: string }>): string {
   const nm = (id?: string) => (id ? playerName(players.get(id) as any, 'short') : '?');
   switch (ev.type) {
+    case 'pitch':
+      return ev.result === 'ball' ? 'Ball' : ev.result === 'foul' ? 'Foul' : ev.result === 'strike_looking' ? 'Strike looking' : ev.result === 'strike_swinging' ? 'Strike swinging' : 'Strike';
     case 'plate_appearance': {
       const outs = ev.runners.filter((m) => m.to === 'out').length;
       const runs = ev.runners.filter((m) => m.to === 4).length;
       return `${nm(ev.batterId)}: ${scorebookNotation(ev.result, ev.fielding?.sequence)}${ev.battedBall?.hardness ? ` (${ev.battedBall.hardness}${ev.battedBall.trajectory ? ' ' + ev.battedBall.trajectory : ''})` : ''}${runs ? `, ${runs} R` : ''}${ev.rbi ? `, ${ev.rbi} RBI` : ''}${outs ? `, ${outs} out` : ''}`;
     }
     case 'baserunning':
+      if (ev.kind === 'PICKOFF_ATTEMPT' || ev.kind === 'BACK_PICK') return `${ev.kind === 'BACK_PICK' ? 'Back-pick' : 'Pickoff attempt'} to ${ev.targetBase === 1 ? '1st' : ev.targetBase === 2 ? '2nd' : ev.targetBase === 3 ? '3rd' : '?'}${ev.runners.length ? ', runner moved' : ''}`;
       return `${ev.kind.replace('_', ' ')}: ${ev.runners.map((m) => `${nm(m.playerId) !== '?' ? nm(m.playerId) : 'runner on ' + m.from} to ${m.to === 4 ? 'home' : m.to}`).join(', ')}`;
     case 'defense_change':
       return `Defense: ${ev.changes.map((c) => `${POSITION_LABEL[c.position]} ${c.playerId ? nm(c.playerId) : 'empty'}`).join(', ')}`;

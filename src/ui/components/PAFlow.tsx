@@ -26,6 +26,11 @@ export interface PAFlowProps {
   onClose: () => void;
   initial?: PlateAppearanceEvent;
   onChangeBatter?: () => void;
+  /** Open directly on a result (walk on ball four) or on a step (strikeout choices on strike three). */
+  startResult?: PAResult;
+  startStep?: 'k';
+  /** Pitches already logged for this at-bat; when present the manual pitch chips are hidden. */
+  loggedPitches?: number;
 }
 
 const TRAJ: Array<{ v: Trajectory; l: string }> = [
@@ -83,16 +88,16 @@ function implyTrajectory(result: PAResult): Trajectory | undefined {
   }
 }
 
-export function PAFlow({ replay, side, batter, level, players, onSave, onClose, initial, onChangeBatter }: PAFlowProps) {
+export function PAFlow({ replay, side, batter, level, players, onSave, onClose, initial, onChangeBatter, startResult, startStep, loggedPitches }: PAFlowProps) {
   const fieldingSide = side === 'home' ? 'away' : 'home';
   const defense = replay.state[fieldingSide].defense;
   const bases = replay.state.bases;
   const outs = replay.state.outs;
 
-  const [step, setStep] = useState<Step>(initial ? 'review' : 'category');
+  const [step, setStep] = useState<Step>(initial ? 'review' : startResult ? 'review' : startStep ?? 'category');
   const [history, setHistory] = useState<Step[]>([]);
-  const [result, setResult] = useState<PAResult | null>(initial?.result ?? null);
-  const [moves, setMoves] = useState<RunnerMove[]>(initial?.runners ?? []);
+  const [result, setResult] = useState<PAResult | null>(initial?.result ?? startResult ?? null);
+  const [moves, setMoves] = useState<RunnerMove[]>(initial?.runners ?? (startResult ? proposeMoves(startResult, { bases: replay.state.bases, outs: replay.state.outs }) : []));
   const [rbiOverride, setRbiOverride] = useState<number | null>(initial ? initial.rbi : null);
   const [batted, setBatted] = useState<BattedBall>(initial?.battedBall ?? {});
   const [sequence, setSequence] = useState<Position[]>(initial?.fielding?.sequence ?? []);
@@ -454,7 +459,9 @@ export function PAFlow({ replay, side, batter, level, players, onSave, onClose, 
             </div>
           </div>
 
-          {level !== 'A' && (
+          {loggedPitches ? (
+            <div className="banner info" style={{ marginTop: 12 }}>{loggedPitches} pitch{loggedPitches === 1 ? '' : 'es'} logged before this one{finalPitchNote(result)}.</div>
+          ) : level !== 'A' && (
             <div className="row between" style={{ marginTop: 12 }}>
               <strong>Pitches in this at-bat</strong>
               <div className="chips">
@@ -466,7 +473,6 @@ export function PAFlow({ replay, side, batter, level, players, onSave, onClose, 
               </div>
             </div>
           )}
-          {level === 'C' && <PitchByPitch pitches={pitches} onChange={setPitches} />}
 
           <div className="row between" style={{ marginTop: 12 }}>
             <strong>Quality at-bat</strong>
@@ -501,6 +507,16 @@ export function PAFlow({ replay, side, batter, level, players, onSave, onClose, 
       )}
     </Sheet>
   );
+}
+
+function finalPitchNote(result: PAResult): string {
+  switch (result) {
+    case 'BB': return ', plus ball four';
+    case 'IBB': return ', no pitch for the intentional walk';
+    case 'HBP': return ', plus the pitch that hit him';
+    case 'K': case 'KL': case 'D3K': return ', plus strike three';
+    default: return ', plus the ball in play (a strike)';
+  }
 }
 
 function PitchByPitch({ pitches, onChange }: { pitches?: PitchDetail; onChange: (p: PitchDetail | undefined) => void }) {

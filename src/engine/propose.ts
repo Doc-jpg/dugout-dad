@@ -153,6 +153,9 @@ export function proposeBaserunning(kind: BaserunningKind, runnerBase: 1 | 2 | 3,
       return [move(runnerBase, next, 'other')];
     case 'OUT_OTHER':
       return [move(runnerBase, 'out', 'tag')];
+    case 'PICKOFF_ATTEMPT':
+    case 'BACK_PICK':
+      return [];
   }
 }
 

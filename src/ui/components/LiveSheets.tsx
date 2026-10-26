@@ -18,7 +18,9 @@ export type BRPayload = Omit<BaserunningEvent, 'id' | 'gameId' | 'seq' | 'ts'>;
 const BR_KINDS: Array<{ v: BaserunningKind; l: string; perRunner: boolean }> = [
   { v: 'SB', l: 'Stolen base', perRunner: true },
   { v: 'CS', l: 'Caught stealing', perRunner: true },
-  { v: 'PICKOFF', l: 'Picked off', perRunner: true },
+  { v: 'PICKOFF', l: 'Picked off (out)', perRunner: true },
+  { v: 'PICKOFF_ATTEMPT', l: 'Pickoff attempt (pitcher)', perRunner: true },
+  { v: 'BACK_PICK', l: 'Back-pick (catcher)', perRunner: true },
   { v: 'WP', l: 'Wild pitch', perRunner: false },
   { v: 'PB', l: 'Passed ball', perRunner: false },
   { v: 'BALK', l: 'Balk', perRunner: false },
@@ -30,7 +32,7 @@ const BR_KINDS: Array<{ v: BaserunningKind; l: string; perRunner: boolean }> = [
   { v: 'ADV_OTHER', l: 'Other advance', perRunner: true }
 ];
 
-export function BaserunningFlow({ replay, side, players, onSave, onClose }: { replay: ReplayResult; side: Side; players: Map<string, Player>; onSave: (p: BRPayload) => void; onClose: () => void }) {
+export function BaserunningFlow({ replay, side, players, onSave, onClose, presetKinds }: { replay: ReplayResult; side: Side; players: Map<string, Player>; onSave: (p: BRPayload) => void; onClose: () => void; presetKinds?: BaserunningKind[] }) {
   const bases = replay.state.bases;
   const fieldingSide = side === 'home' ? 'away' : 'home';
   const defense = replay.state[fieldingSide].defense;
@@ -59,10 +61,11 @@ export function BaserunningFlow({ replay, side, players, onSave, onClose }: { re
   };
 
   const needsError = kind === 'ADV_ERROR' || kind === 'PICKOFF_ERROR';
+  const isAttempt = kind === 'PICKOFF_ATTEMPT' || kind === 'BACK_PICK';
   const save = () => {
     if (!kind) return;
-    const errors: FieldingError[] = needsError && errorPos ? [{ position: errorPos, playerId: defense[errorPos], kind: kind === 'PICKOFF_ERROR' ? 'throwing' : 'throwing', official: true }] : [];
-    onSave({ type: 'baserunning', side, kind, runners: moves, pitcherId: defense[1], catcherId: defense[2], fielding: sequence.length || errors.length ? { sequence, errors } : undefined });
+    const errors: FieldingError[] = needsError && errorPos ? [{ position: errorPos, playerId: defense[errorPos], kind: 'throwing', official: true }] : [];
+    onSave({ type: 'baserunning', side, kind, runners: moves, pitcherId: defense[1], catcherId: defense[2], targetBase: runner ?? undefined, fielding: sequence.length || errors.length ? { sequence, errors } : undefined });
   };
 
   return (
@@ -81,7 +84,7 @@ export function BaserunningFlow({ replay, side, players, onSave, onClose }: { re
       {runnersOn.length === 0 && <div className="banner info">No runners on base. Use "Fix" to put a runner on if you missed a play.</div>}
       {step === 'kind' && (
         <div className="btn-grid">
-          {BR_KINDS.map((k) => (
+          {BR_KINDS.filter((k) => !presetKinds || presetKinds.includes(k.v)).map((k) => (
             <button key={k.v} className="btn" onClick={() => chooseKind(k.v)} disabled={runnersOn.length === 0}>
               {k.l}
             </button>
@@ -107,6 +110,7 @@ export function BaserunningFlow({ replay, side, players, onSave, onClose }: { re
       )}
       {step === 'review' && (
         <>
+          {isAttempt && <div className="banner info">Logged as a throw to {runner === 1 ? 'first' : runner === 2 ? 'second' : 'third'} that did not get the runner. If a runner moved on the throw, set it below; if he was out, use "Picked off (out)" instead.</div>}
           <RunnerReview bases={bases} batter={null} hideBatter moves={moves} onChange={setMoves} players={players} outsBefore={replay.state.outs} />
           {(kind === 'CS' || kind === 'PICKOFF' || kind === 'OUT_OTHER') && (
             <div className="section">

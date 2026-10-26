@@ -2,6 +2,14 @@
 
 A running log, newest first. Keep adding to it; the point is that the next session starts from here.
 
+## 2026-10-26, pitch-by-pitch (Deren's feedback after trying the practice game)
+
+- Pitch logging is now the default way to score: Ball / Strike / Foul on the game screen, count shown by the batter, ball four opens the walk, strike three asks swinging or looking, the ball in play counts as a strike. Per-game switch "Log every pitch" (off = result-only scoring, nothing invented). Pitch events are their own log entries, so undo works pitch by pitch and the count survives closing the app.
+- Pitcher pitch counts and strike percentage update on every pitch for whichever side is pitching. The deciding pitch is never counted twice (if ball four or strike three was logged, the at-bat does not add it again). Catch-up at-bats with no logged pitches get no invented count; with logging on, a first-pitch ball in play is one pitch.
+- A side with nobody at pitcher gets a placeholder "Pitcher" when the game starts (unknown opponents), so their pitches have an owner; tap the pitcher's name to fill in name, number, throws.
+- Added: "Ball, runners moved" shortcut (ball then wild pitch or passed ball), pickoff attempts by the pitcher and back-picks by the catcher to any base (logged, no movement), Throws L/R on every player (roster editor and quick edit from the game screen), bats shown too.
+- Tests: 83. Scripts: `scripts/pitchgame.cjs` (34 checks: counts, fouls at two strikes, auto walk and strikeout, pitch totals and strike percentage both sides, pickoffs, undo of a pitch, placeholder pitcher, quick edit) and `scripts/fullgame.cjs` (59 checks, result-only mode).
+
 ## 2026-10-26, hosted and practice mode
 
 - Repository: https://github.com/Doc-jpg/dugout-dad (Deren's personal GitHub, public; no roster data in it). Live app: https://doc-jpg.github.io/dugout-dad/ (GitHub Pages, deploys automatically on every push to main through .github/workflows/pages.yml). Verified on the live address: service worker installs, practice game loads, a play scores, reload with network off works.

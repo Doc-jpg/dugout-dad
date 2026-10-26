@@ -27,7 +27,8 @@ export function NewGamePage() {
   const [timeLimit, setTimeLimit] = useState<string>('');
   const [fieldConfig, setFieldConfig] = useState<Game['rules']['fieldConfig']>('54/80');
   const [gameType, setGameType] = useState<Game['gameType']>('pool');
-  const [level, setLevel] = useState<ScoringLevel>(settings.defaultScoringLevel);
+  const [level, setLevel] = useState<ScoringLevel>(settings.defaultScoringLevel === 'C' ? 'B' : settings.defaultScoringLevel);
+  const [pitchLogging, setPitchLogging] = useState(true);
   const [oppDepth, setOppDepth] = useState<Game['opponentScoringDepth']>('full');
   const [busy, setBusy] = useState(false);
 
@@ -77,7 +78,8 @@ export function NewGamePage() {
           fieldConfig,
           eraInnings: settings.defaultEraInnings || 7
         },
-        scoringLevel: level,
+        scoringLevel: level === 'C' ? 'B' : level,
+        pitchLogging,
         status: 'setup',
         opponentScoringDepth: oppDepth
       });
@@ -220,13 +222,14 @@ export function NewGamePage() {
           <button className={`chip ${level === 'B' ? 'on' : ''}`} onClick={() => setLevel('B')}>
             Enhanced
           </button>
-          <button className={`chip ${level === 'C' ? 'on' : ''}`} onClick={() => setLevel('C')}>
-            Full (pitches)
-          </button>
         </div>
         <p className="muted small" style={{ marginTop: 8 }}>
-          Quick: result, outs, runs, runners, positions. Enhanced adds contact quality, hit location and fielding detail when you have time. Full adds pitch-by-pitch. You can switch during the game.
+          Quick: result, outs, runs, runners, positions. Enhanced adds optional contact quality, hit location and fielding detail on each play. You can switch during the game.
         </p>
+        <label className="switch">
+          <span><strong>Log every pitch</strong><br /><span className="muted small">Ball, Strike, Foul buttons and the count; pitch counts and strike percentage for both pitchers.</span></span>
+          <input type="checkbox" checked={pitchLogging} onChange={(e) => setPitchLogging(e.target.checked)} style={{ width: 24, height: 24 }} />
+        </label>
         <div className="field" style={{ marginTop: 8 }}>
           <label>Opponent at-bats</label>
           <select className="input" value={oppDepth} onChange={(e) => setOppDepth(e.target.value as any)}>

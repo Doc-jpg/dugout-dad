@@ -17,7 +17,7 @@
 import type {
   Game, GameEvent, ID, Half, Side, Position, LineupSlot, PlateAppearanceEvent, BaserunningEvent,
   RunnerMove, PAResult, BattedBall, PitchDetail, FieldingRecord, Difficulty, Execution, GameEndReason,
-  Destination
+  Destination, PitchResult
 } from './types';
 
 // ---------------------------------------------------------------------------
@@ -122,6 +122,8 @@ export interface PitcherLine {
   wildPitches: number;
   balks: number;
   pickoffs: number;
+  /** Pickoff throws by the pitcher that did not get the runner. */
+  pickoffAttempts: number;
   stolenBasesAllowed: number;
   caughtStealing: number;
   /** Pitch count and how it is known. null = unknown. */
@@ -204,6 +206,10 @@ export interface GameLiveState {
   started: boolean; // at least one PA or baserunning event recorded
   skippedPlays: boolean;
   scoreAdjustments: Array<{ side: Side; runs: number; reason: string; seq: number }>;
+  /** Current count on the batter, from logged pitch events. */
+  count: { balls: number; strikes: number };
+  /** Pitches logged for the current at-bat (not yet attached to a plate appearance). */
+  pendingPitches: PitchResult[];
 }
 
 export interface ReplayResult {
@@ -231,6 +237,42 @@ export function fieldingSide(half: Half): Side {
 }
 export function otherSide(side: Side): Side {
   return side === 'home' ? 'away' : 'home';
+}
+
+/** The pitch that ends an at-bat, implied by its result (null when no pitch is thrown, e.g. an intentional walk). */
+export function finalPitchFor(result: PAResult): NonNullable<PitchDetail['pitches']>[number]['result'] | null {
+  switch (result) {
+    case 'BB': return 'ball';
+    case 'IBB': return null;
+    case 'HBP': return 'hbp';
+    case 'K': return 'swinging_strike';
+    case 'KL': return 'called_strike';
+    case 'D3K': return 'swinging_strike';
+    case 'CI': return 'other';
+    default: return 'in_play';
+  }
+}
+
+/** Build the pitch detail for an at-bat from the logged pitches plus the implied final pitch. */
+export function pitchDetailFor(pending: PitchResult[], result: PAResult): PitchDetail {
+  const list: NonNullable<PitchDetail['pitches']> = pending.map((r) => ({
+    result: r === 'ball' ? 'ball' : r === 'foul' ? 'foul' : r === 'strike_swinging' ? 'swinging_strike' : 'called_strike'
+  }));
+  // When ball four or strike three was itself logged, it is already in the list.
+  let loggedBalls = 0;
+  let loggedStrikes = 0;
+  for (const r of pending) {
+    if (r === 'ball') loggedBalls += 1;
+    else if (r === 'foul') { if (loggedStrikes < 2) loggedStrikes += 1; }
+    else loggedStrikes += 1;
+  }
+  const alreadyEnded = (result === 'BB' && loggedBalls >= 4) || ((result === 'K' || result === 'KL' || result === 'D3K') && loggedStrikes >= 3);
+  const final = alreadyEnded ? null : finalPitchFor(result);
+  if (final) list.push({ result: final });
+  const isStrike = (x: string) => x !== 'ball' && x !== 'hbp' && x !== 'other';
+  const balls = list.filter((p) => p.result === 'ball').length;
+  const strikes = list.filter((p) => isStrike(p.result)).length;
+  return { total: list.length, pitches: list, balls, strikes, firstPitchStrike: list.length ? isStrike(list[0].result) : undefined };
 }
 
 export const HIT_RESULTS: ReadonlySet<PAResult> = new Set(['1B', '2B', '3B', 'HR']);
@@ -289,7 +331,9 @@ export function replayGame(game: Game, eventsIn: GameEvent[]): ReplayResult {
     ended: false,
     started: false,
     skippedPlays: false,
-    scoreAdjustments: []
+    scoreAdjustments: [],
+    count: { balls: 0, strikes: 0 },
+    pendingPitches: []
   };
 
   const paLog: PALogEntry[] = [];
@@ -330,6 +374,7 @@ export function replayGame(game: Game, eventsIn: GameEvent[]): ReplayResult {
         wildPitches: 0,
         balks: 0,
         pickoffs: 0,
+        pickoffAttempts: 0,
         stolenBasesAllowed: 0,
         caughtStealing: 0,
         pitches: null,
@@ -441,7 +486,26 @@ export function replayGame(game: Game, eventsIn: GameEvent[]): ReplayResult {
   }
 
   /** End the current half-inning and switch sides. */
+  function resetCount() {
+    state.count = { balls: 0, strikes: 0 };
+    state.pendingPitches = [];
+  }
+
+  /**
+   * Build the pitch detail for a plate appearance from the pitches logged before it plus the
+   * pitch that ended it (implied by the result). An explicit pitch list on the event wins.
+   */
+  function derivePitches(pa: PlateAppearanceEvent): PitchDetail | undefined {
+    if (pa.pitches?.pitches?.length) return pa.pitches;
+    const pending = state.pendingPitches;
+    // No pitches were logged for this at-bat: keep whatever the scorer entered (a manual total or
+    // nothing). Never invent a count from the result alone.
+    if (!pending.length) return pa.pitches;
+    return pitchDetailFor(pending, pa.result);
+  }
+
   function endHalf(creditMissingOuts: boolean) {
+    resetCount();
     const fielding = fieldingSide(state.half);
     const batting = battingSide(state.half);
     const fs = sideState(fielding);
@@ -644,6 +708,32 @@ export function replayGame(game: Game, eventsIn: GameEvent[]): ReplayResult {
     }
 
     switch (ev.type) {
+      case 'pitch': {
+        state.started = true;
+        // Credit the pitcher as each pitch happens so the live count is current mid at-bat.
+        {
+          const fielding = fieldingSide(state.half);
+          const pid = currentPitcher(fielding);
+          if (pid) {
+            const line = getPitcherLine(fielding, pid);
+            if (line.pitchSource !== 'pitch_by_pitch') { line.pitches = line.pitchSource === 'unknown' ? 0 : line.pitches ?? 0; line.pitchSource = 'pitch_by_pitch'; }
+            line.pitches = (line.pitches ?? 0) + 1;
+            const strike = ev.result !== 'ball';
+            if (strike) line.strikes = (line.strikes ?? 0) + 1; else line.strikes = line.strikes ?? 0;
+            if (state.pendingPitches.length === 0) {
+              line.firstPitchBatters = (line.firstPitchBatters ?? 0) + 1;
+              line.firstPitchStrikes = (line.firstPitchStrikes ?? 0) + (strike ? 1 : 0);
+            }
+          }
+        }
+        state.pendingPitches.push(ev.result);
+        if (ev.result === 'ball') state.count.balls += 1;
+        else if (ev.result === 'foul') { if (state.count.strikes < 2) state.count.strikes += 1; }
+        else state.count.strikes += 1;
+        if (state.count.balls > 4 || state.count.strikes > 3) warnings.push(`seq ${ev.seq}: count ran past ${state.count.balls}-${state.count.strikes}; the at-bat should have ended`);
+        break;
+      }
+
       case 'lineup_set': {
         const ss = sideState(ev.side);
         ss.lineup = [...ev.slots].sort((a, b) => a.slot - b.slot);
@@ -710,7 +800,11 @@ export function replayGame(game: Game, eventsIn: GameEvent[]): ReplayResult {
       }
 
       case 'plate_appearance': {
-        const pa = ev as PlateAppearanceEvent;
+        const pa0 = ev as PlateAppearanceEvent;
+        const pa: PlateAppearanceEvent = { ...pa0, pitches: derivePitches(pa0) };
+        // Pitches already credited to the pitcher one by one; only the remainder of the list is new.
+        const alreadyCredited = state.pendingPitches.length;
+        resetCount();
         const batting = pa.side;
         const fielding = otherSide(batting);
         const bs = sideState(batting);
@@ -747,16 +841,21 @@ export function replayGame(game: Game, eventsIn: GameEvent[]): ReplayResult {
           if (STRIKEOUT_RESULTS.has(pa.result)) line.strikeouts += 1;
           if (pa.result === 'KL') line.strikeoutsLooking += 1;
           if (pa.pitches?.total != null) {
+            const newPitches = Math.max(0, pa.pitches.total - alreadyCredited);
             if (line.pitchSource === 'unknown' || line.pitchSource === 'pitch_by_pitch') {
-              line.pitches = (line.pitches ?? 0) + pa.pitches.total;
+              line.pitches = (line.pitches ?? 0) + newPitches;
               line.pitchSource = 'pitch_by_pitch';
             }
             if (pa.pitches.pitches?.length) {
-              const strikes = pa.pitches.pitches.filter((p) => p.result !== 'ball' && p.result !== 'hbp').length;
+              const fresh = pa.pitches.pitches.slice(alreadyCredited);
+              const strikes = fresh.filter((p) => p.result !== 'ball' && p.result !== 'hbp' && p.result !== 'other').length;
               line.strikes = (line.strikes ?? 0) + strikes;
-              line.firstPitchBatters = (line.firstPitchBatters ?? 0) + 1;
-              const fp = pa.pitches.pitches[0];
-              if (fp && fp.result !== 'ball' && fp.result !== 'hbp') line.firstPitchStrikes = (line.firstPitchStrikes ?? 0) + 1;
+              if (alreadyCredited === 0) {
+                line.firstPitchBatters = (line.firstPitchBatters ?? 0) + 1;
+                line.firstPitchStrikes = line.firstPitchStrikes ?? 0;
+                const fp = pa.pitches.pitches[0];
+                if (fp && fp.result !== 'ball' && fp.result !== 'hbp' && fp.result !== 'other') line.firstPitchStrikes += 1;
+              }
             } else if (pa.pitches.firstPitchStrike != null) {
               line.firstPitchBatters = (line.firstPitchBatters ?? 0) + 1;
               if (pa.pitches.firstPitchStrike) line.firstPitchStrikes = (line.firstPitchStrikes ?? 0) + 1;
@@ -974,6 +1073,7 @@ export function replayGame(game: Game, eventsIn: GameEvent[]): ReplayResult {
           if (br.kind === 'WP') line.wildPitches += 1;
           if (br.kind === 'BALK') line.balks += 1;
           if (br.kind === 'PICKOFF') line.pickoffs += 1;
+          if (br.kind === 'PICKOFF_ATTEMPT') line.pickoffAttempts += 1;
           if (br.kind === 'SB') line.stolenBasesAllowed += moves.filter((m) => m.to !== 'out').length;
           if (br.kind === 'CS') line.caughtStealing += moves.filter((m) => m.to === 'out').length;
         }
@@ -1021,6 +1121,7 @@ export function replayGame(game: Game, eventsIn: GameEvent[]): ReplayResult {
 
       case 'state_correction': {
         if (ev.skippedPlays) state.skippedPlays = true;
+        if (ev.inning != null || ev.half != null || ev.outs != null || ev.nextSlot) resetCount();
         const prevHalf = state.half;
         const prevInning = state.inning;
         if (ev.inning != null) state.inning = ev.inning;

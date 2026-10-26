@@ -22,7 +22,8 @@ type Play =
   | { pa: PAResult; seq?: Position[]; err?: { pos: Position; kind: 'fielding' | 'throwing' }; bb?: BattedBall; override?: (m: RunnerMove[]) => RunnerMove[] }
   | { run: 'SB' | 'WP' | 'CS'; from: 1 | 2 | 3 }
   | { defense: Array<{ position: Position; playerId: string }> }
-  | { pitchCount: number };
+  | { pitchCount: number }
+  | { pitches: Array<'ball' | 'strike' | 'foul'> };
 
 export async function loadSampleData(): Promise<{ finishedGameId: string; liveGameId: string }> {
   let team = (await db.teams.toArray()).find((t) => t.isMine);
@@ -34,7 +35,7 @@ export async function loadSampleData(): Promise<{ finishedGameId: string; liveGa
   const players: Record<string, string> = {};
   for (const [number, first, last] of ROSTER) {
     let p = existing.find((x) => x.firstName === first && x.lastName === last);
-    if (!p) p = await createPlayer({ teamId: team.id, firstName: first, lastName: last, number, isFocus: last === 'Flesher' });
+    if (!p) p = await createPlayer({ teamId: team.id, firstName: first, lastName: last, number, isFocus: last === 'Flesher', throws: last === 'Flesher' || last === 'Watts' || last === 'Meadows' ? 'R' : undefined, bats: last === 'Flesher' ? 'R' : undefined });
     players[last] = p.id;
   }
   const settings = await db.settings.get('settings');
@@ -109,9 +110,10 @@ export async function loadSampleData(): Promise<{ finishedGameId: string; liveGa
   ], 'time_limit');
 
   const live = await buildGame(team.id, opp.id, orderWithWatts, oppIds, defenseStart, '2026-10-17', '11:30', 'in_progress', [
-    { pa: 'GO', seq: [6, 3] },
-    { pa: '1B' },
-    { pa: 'K' },
+    { pitches: ['ball', 'strike'] }, { pa: 'GO', seq: [6, 3] },
+    { pitches: ['strike', 'foul', 'ball'] }, { pa: '1B' },
+    { pitches: ['ball'] }, { run: 'SB', from: 1 },
+    { pitches: ['strike', 'strike', 'foul', 'foul'] }, { pa: 'K' },
     { pa: 'FO', seq: [9] },
     { pa: 'K' },
     { pa: 'BB' },
@@ -135,7 +137,7 @@ async function buildGame(
 ): Promise<string> {
   const game = await createGame({
     teamId, opponentTeamId: oppId, mySide: 'away', date, time, venue: 'Practice field', ageDivision: '13U', gameType: 'scrimmage',
-    rules: { scheduledInnings: 7, eraInnings: 7, fieldConfig: '54/80' }, scoringLevel: 'B', status: 'in_progress',
+    rules: { scheduledInnings: 7, eraInnings: 7, fieldConfig: '54/80' }, scoringLevel: 'B', pitchLogging: true, status: 'in_progress',
     opponentScoringDepth: 'full', notes: PRACTICE_TAG
   });
   const gid = game.id;
@@ -155,6 +157,10 @@ async function buildGame(
       await appendEvent(gid, { type: 'defense_change', side: 'away', changes: play.defense, reason: play.defense.some((c) => c.position === 1) ? 'pitching_change' : 'swap' } as any);
       continue;
     }
+    if ('pitches' in play) {
+      for (const r of play.pitches) await appendEvent(gid, { type: 'pitch', side: batting, result: r } as any);
+      continue;
+    }
     if ('pitchCount' in play) {
       const pid = r.state.away.defense[1];
       if (pid) await appendEvent(gid, { type: 'pitch_count', side: 'away', pitcherId: pid, count: play.pitchCount, source: 'manual' } as any);
@@ -169,6 +175,7 @@ async function buildGame(
     }
     const ss = r.state[batting];
     const slot = ss.lineup[ss.nextSlotIndex % ss.lineup.length];
+    const logged = r.state.pendingPitches;
     let moves = proposeMoves(play.pa, { bases: r.state.bases, outs: r.state.outs });
     if (play.override) moves = play.override(moves);
     const fieldingRec: FieldingRecord | undefined = play.seq || play.err
@@ -177,7 +184,7 @@ async function buildGame(
     await appendEvent(gid, {
       type: 'plate_appearance', side: batting, slot: slot.slot, batterId: slot.playerId, pitcherId: r.state[fielding].defense[1],
       result: play.pa, runners: moves, rbi: proposeRbi(play.pa, moves), battedBall: play.bb, fielding: fieldingRec,
-      pitches: { total: 3 + ((slot.slot * 7) % 4) }
+      pitches: logged.length ? undefined : { total: 3 + ((slot.slot * 7) % 4) }
     } as any);
   }
   if (status === 'final') {

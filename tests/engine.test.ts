@@ -466,3 +466,98 @@ describe('game flow, lineups and incomplete games', () => {
     expect(r.paLog.find((p) => p.side === 'home')!.batterId).toBe('opp-unknown-1');
   });
 });
+
+describe('pitch logging', () => {
+  const pitch = (log: Log, side: 'home' | 'away', result: any) => {
+    log.events.push({ id: `p${log.events.length}`, gameId: log.game.id, seq: log.events.length, ts: '', type: 'pitch', side, result });
+  };
+  it('tracks the count; a foul with two strikes is a pitch and a strike but does not change the count', () => {
+    const log = standardStart();
+    pitch(log, 'away', 'ball');
+    pitch(log, 'away', 'strike');
+    pitch(log, 'away', 'foul');
+    pitch(log, 'away', 'foul');
+    pitch(log, 'away', 'ball');
+    let r = log.replay();
+    expect(r.state.count).toEqual({ balls: 2, strikes: 2 });
+    expect(r.state.pendingPitches).toHaveLength(5);
+    // Ball in play on the next pitch: six pitches, 2 balls, 4 strikes (two fouls, one strike, the ball in play)
+    log.pa('away', '1B');
+    r = log.replay();
+    expect(r.state.count).toEqual({ balls: 0, strikes: 0 });
+    expect(r.state.pendingPitches).toHaveLength(0);
+    const pa = r.paLog[0];
+    expect(pa.pitches?.total).toBe(6);
+    expect(pa.pitches?.balls).toBe(2);
+    expect(pa.pitches?.strikes).toBe(4);
+    const o1 = r.pitcherLines.find((l) => l.pitcherId === 'o1')!;
+    expect(o1.pitches).toBe(6);
+    expect(o1.pitchSource).toBe('pitch_by_pitch');
+    expect(o1.strikes).toBe(4);
+    expect(o1.firstPitchStrikes).toBe(0);
+    expect(o1.firstPitchBatters).toBe(1);
+  });
+  it('full count then a walk is six pitches with the fourth ball; strikeout adds the third strike', () => {
+    const log = standardStart();
+    for (const p of ['ball', 'strike', 'ball', 'strike', 'ball']) pitch(log, 'away', p);
+    log.pa('away', 'BB');
+    pitch(log, 'away', 'strike');
+    pitch(log, 'away', 'strike_looking');
+    log.pa('away', 'KL');
+    const r = log.replay();
+    expect(r.paLog[0].pitches?.total).toBe(6);
+    expect(r.paLog[0].pitches?.balls).toBe(4);
+    expect(r.paLog[1].pitches?.total).toBe(3);
+    expect(r.paLog[1].pitches?.strikes).toBe(3);
+    expect(r.pitcherLines.find((l) => l.pitcherId === 'o1')!.pitches).toBe(9);
+  });
+  it('an at-bat with no logged pitches gets no invented count', () => {
+    const log = standardStart();
+    log.pa('away', 'K');
+    const r = log.replay();
+    expect(r.paLog[0].pitches).toBeUndefined();
+    expect(r.pitcherLines.find((l) => l.pitcherId === 'o1')!.pitches).toBeNull();
+  });
+  it('pickoff attempts and back-picks are logged without moving anyone', () => {
+    const log = standardStart();
+    log.pa('away', '1B');
+    pitch(log, 'away', 'ball');
+    log.run('away', 'PICKOFF_ATTEMPT', []);
+    log.run('away', 'BACK_PICK', []);
+    const r = log.replay();
+    expect(r.state.bases[1]?.playerId).toBe('p1');
+    expect(r.state.count).toEqual({ balls: 1, strikes: 0 });
+    expect(r.pitcherLines.find((l) => l.pitcherId === 'o1')!.pickoffAttempts).toBe(1);
+    expect(r.baserunningLog.map((b) => b.kind)).toEqual(['PICKOFF_ATTEMPT', 'BACK_PICK']);
+  });
+  it('undoing a pitch restores the count; the count resets at the end of a half-inning', () => {
+    const log = standardStart();
+    pitch(log, 'away', 'strike');
+    pitch(log, 'away', 'strike');
+    log.events.pop();
+    expect(log.replay().state.count).toEqual({ balls: 0, strikes: 1 });
+    log.endHalf(true);
+    expect(log.replay().state.count).toEqual({ balls: 0, strikes: 0 });
+  });
+});
+
+describe('pitch logging: the deciding pitch is not counted twice', () => {
+  const pitch = (log: Log, result: any) => log.events.push({ id: `q${log.events.length}`, gameId: log.game.id, seq: log.events.length, ts: '', type: 'pitch', side: 'away', result });
+  it('three logged strikes then a strikeout is three pitches; four logged balls then a walk is four', () => {
+    const log = standardStart();
+    pitch(log, 'strike'); pitch(log, 'strike'); pitch(log, 'strike');
+    log.pa('away', 'KL');
+    pitch(log, 'ball'); pitch(log, 'ball'); pitch(log, 'ball'); pitch(log, 'ball');
+    log.pa('away', 'BB');
+    const r = log.replay();
+    expect(r.paLog[0].pitches?.total).toBe(3);
+    expect(r.paLog[1].pitches?.total).toBe(4);
+    expect(r.pitcherLines.find((l) => l.pitcherId === 'o1')!.pitches).toBe(7);
+  });
+  it('two logged strikes then a strikeout adds strike three (catch-up)', () => {
+    const log = standardStart();
+    pitch(log, 'strike'); pitch(log, 'strike');
+    log.pa('away', 'K');
+    expect(log.replay().paLog[0].pitches?.total).toBe(3);
+  });
+});
