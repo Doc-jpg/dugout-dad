@@ -96,6 +96,10 @@ export class Log {
     this.events.push({ ...this.base(), type: 'state_correction', ...payload });
     return this;
   }
+  availability(side: Side, playerId: ID, status: 'present' | 'absent' | 'injured' | 'left') {
+    this.events.push({ ...this.base(), type: 'availability', side, playerId, status });
+    return this;
+  }
   endHalf(creditMissingOuts = false) {
     this.events.push({ ...this.base(), type: 'half_inning_end', creditMissingOuts });
     return this;

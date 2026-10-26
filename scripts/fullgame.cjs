@@ -99,8 +99,8 @@ function expect(label, got, want) {
   await page.click('text=Fill from batting order');
   await page.click('.pos >> text=CF'); await page.click('.chips .chip:has-text("E. Flesher")'); // Eli CF, swaps with CF holder
   await page.click('role=button[name=/Stress Test/]');
-  await page.click('text=Unknown lineup: 9 batters');
-  await page.waitForSelector('text=Batter 9');
+  await page.click('text=Unknown lineup: 9 players');
+  await page.waitForSelector('text=Player 9');
   await page.click('text=Start game');
   await page.waitForSelector(B('Record at-bat'));
   console.log('setup done; order:', (await page.locator('.now .who').innerText()));

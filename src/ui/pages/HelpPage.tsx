@@ -51,7 +51,7 @@ export function HelpPage() {
         <h2>Scoring a game, start to finish</h2>
         <ol style={{ paddingLeft: 20, margin: '6px 0 0' }} className="col">
           <li><strong>New game.</strong> Opponent name (or "Unknown"), are we home or away, date. Tap Next.</li>
-          <li><strong>Lineups.</strong> Tap your players in batting order. Tap Defense, then "Fill from batting order", then fix any spots by tapping a position and a player. For the other team, tap "Unknown lineup: 9 batters" unless you know their names. Tap Start game.</li>
+          <li><strong>Lineups.</strong> Tap your players in batting order. Under "Not here today?", tap anyone who did not make it; everyone else on the roster counts as here, and whoever is not in the order is on the bench. Tap Defense, then "Fill from batting order", then fix any spots by tapping a position and a player. For the other team, tap "Unknown lineup: 9 players" unless you know their names. Tap Start game.</li>
           <li><strong>Each pitch:</strong> tap <strong>Ball</strong>, <strong>Strike</strong> or <strong>Foul</strong>. The count shows next to the batter. Ball four opens the walk with the forced runners already set; strike three asks swinging or looking. A foul with two strikes counts a pitch and a strike for the pitcher and leaves the count alone.</li>
           <li><strong>Ball put in play:</strong> tap <strong>In play</strong>, then what happened. Hit, Single, Skip, Confirm. Out, Groundout, tap the shortstop then first base, Next, Confirm. The app proposes where the runners went; change a chip if it guessed wrong. That last pitch is counted as a strike for the pitcher automatically, so a full count and then a single is six pitches, three and three.</li>
           <li><strong>Pitch got away with runners on:</strong> tap <strong>Wild pitch / passed ball</strong> (or Runner, then the same). It asks whether that pitch was a ball, a strike, or already tapped, so the pitch is counted exactly once, then where each runner ended up. Rule of thumb: the pitch result first, everything that happened after it is added on top.</li>
@@ -59,6 +59,7 @@ export function HelpPage() {
           <li><strong>Lefty or righty:</strong> tap the pitcher's name (or the batter's name, then Edit) to set throws, bats, name and number as you learn them. Works for the other team too.</li>
           <li><strong>Between at-bats</strong> (steal, wild pitch, passed ball, pickoff): tap <strong>Runner</strong>.</li>
           <li><strong>Someone moved positions or a new pitcher came in:</strong> tap <strong>Defense</strong>, tap the position, tap the player. Picking a player who is already in the field swaps the two.</li>
+          <li><strong>Someone got hurt, went home, or showed up late:</strong> tap <strong>Fix</strong>, then <strong>Who's here</strong>, tap the player, then Hurt, Left early, or Here / back in. Hurt and gone clear his position so you can fill it from Defense, and his expected playing time stops right there. If a kid marked hurt bats or fields anyway, the app counts him as back in and leaves a note.</li>
           <li><strong>You missed something:</strong> tap <strong>Fix</strong>. Add runs the other team scored while you were talking, set the inning and outs to match the scoreboard, enter a pitch count, or leave a note. The app records that you fixed it instead of making up plays.</li>
           <li><strong>Wrong tap:</strong> <strong>Undo</strong> takes back the last play. The <strong>Log</strong> (top right) lets you change or remove any play from any inning.</li>
           <li><strong>Game over:</strong> tap End game and why (regulation, time limit, mercy). It is saved on the phone. Start the next one.</li>
@@ -84,6 +85,7 @@ export function HelpPage() {
         <h2>What the numbers mean</h2>
         <ul style={{ paddingLeft: 20, margin: '6px 0 0' }} className="small">
           <li>Innings like <strong>1.2</strong> mean one inning and two outs, the way baseball writes it.</li>
+          <li><strong>Bench</strong> is innings a player was here and healthy but not in the field. <strong>DNP</strong> is a game he was here and never played; <strong>DNB</strong> is a game he was here while the team batted and never in the order. Absent games count against none of that. <strong>PA share</strong> is his plate appearances per team plate appearance while he was here; nine batters rotating evenly sit near 11%.</li>
           <li>"Hard%" and "routine play converted" are what you saw from the stands, not measurements. The app labels them that way and shows how many plays they are based on.</li>
           <li>A dash means not recorded, never zero.</li>
           <li>Imported GameChanger totals stay separate from what you score here unless the dates make combining them safe.</li>

@@ -14,7 +14,8 @@ Built October 2026 for Eli's travel baseball (Oklahoma Rattlers 13U) from the ma
 |---|---|
 | Teams and rosters, roster status (regular, pickup, guest, inactive, former), player merge | Working |
 | Game setup: date, tournament, venue, home/away, innings, time limit, 50/70, 54/80, 60/90, scoring depth | Working |
-| Batting orders for both sides, unknown opponents (Batter 1..9, #12), rename later without losing events | Working |
+| Batting orders for both sides, unknown opponents (Player 1..9, #12), rename later without losing events | Working |
+| Availability: whole roster counts as here, mark absent at setup, hurt or gone or back from the game screen; bench innings, did-not-play, did-not-bat, PA share per player | Working |
 | Starting defense on a tap-to-assign diamond, defense carried forward, swaps and pitching changes mid-inning | Working |
 | Live scoring: hit, out, strikeout, walk, HBP, reached on error, fielder's choice, other, in two to three taps | Working |
 | Runner review with proposed advancement, RBI and "scored on error" toggles, warnings for impossible plays | Working |

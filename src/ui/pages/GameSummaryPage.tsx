@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useGame, useEvents, usePlayerMap, useTeams, useSettings, fmtDate, fmt3, fmt2 } from '../hooks';
-import { replayGame } from '../../engine/reducer';
-import { boxScore, type BattingLine, type PitchingLine } from '../../engine/stats';
+import { replayGame, gameRoster } from '../../engine/reducer';
+import { boxScore, availabilitySummary, type BattingLine, type PitchingLine } from '../../engine/stats';
 import { POSITION_LABEL, outsToInnings, nowIso } from '../../engine/types';
 import type { Side } from '../../engine/types';
 import { db, deleteGame, playerName, appendEvent } from '../../db/db';
@@ -123,17 +123,30 @@ export function GameSummaryPage() {
       <p className="muted small">* earned runs assume no unrecorded errors (quick scoring without fielding detail).</p>
 
       <div className="section">
-        <div className="section-title"><h3>{nameOf(game.mySide)} defensive innings</h3></div>
+        <div className="section-title"><h3>{nameOf(game.mySide)} who played, who sat</h3><span className="muted small">{outsToInnings(replay.state[game.mySide].defensiveOuts)} innings in the field</span></div>
         <div className="list">
-          {[...byPlayer.entries()].sort((a, b) => b[1].reduce((x, y) => x + y.outs, 0) - a[1].reduce((x, y) => x + y.outs, 0)).map(([pid, arr]) => (
-            <div key={pid} className={`item ${pid === settings.focusPlayerId ? 'focus' : ''}`} style={{ minHeight: 44 }}>
-              <span className="grow title">{pn(pid)}</span>
-              <span className="small">{arr.sort((a, b) => b.outs - a.outs).map((x) => `${POSITION_LABEL[x.position as 1]} ${outsToInnings(x.outs)}`).join(' · ')}</span>
-              <span className="pill">{outsToInnings(arr.reduce((x, y) => x + y.outs, 0))}</span>
-            </div>
-          ))}
+          {gameRoster(replay, game.mySide)
+            .map((pid) => ({ pid, row: availabilitySummary([replay], pid, game.teamId).byGame[0], arr: byPlayer.get(pid) ?? [] }))
+            .filter((x) => x.row && !players.get(x.pid)?.isPlaceholder)
+            .sort((a, b) => (a.row.status === 'absent' ? 1 : 0) - (b.row.status === 'absent' ? 1 : 0) || b.row.fieldOuts - a.row.fieldOuts || b.row.pa - a.row.pa)
+            .map(({ pid, row, arr }) => (
+              <div key={pid} className={`item ${pid === settings.focusPlayerId ? 'focus' : ''}`} style={{ minHeight: 44 }}>
+                <div className="grow">
+                  <div className="title">{pn(pid)} {row.status !== 'present' && <span className={`avail-pill ${row.status}`}>{row.status === 'absent' ? 'Absent' : row.status === 'injured' ? 'Hurt' : 'Left early'}</span>}</div>
+                  <div className="sub">
+                    {row.status === 'absent' ? 'not at the game' : [
+                      arr.length ? arr.sort((a, b) => b.outs - a.outs).map((x) => `${POSITION_LABEL[x.position as 1]} ${outsToInnings(x.outs)}`).join(' · ') : 'did not play the field',
+                      row.benchOuts > 0 ? `bench ${outsToInnings(row.benchOuts)}` : null,
+                      row.inOrder ? `${row.pa} PA` : row.availableTeamPAs > 0 ? 'did not bat' : null
+                    ].filter(Boolean).join(' · ')}
+                  </div>
+                </div>
+                {row.status !== 'absent' && <span className={`pill ${row.benchOuts > 0 && row.fieldOuts === 0 ? 'warn' : ''}`}>{outsToInnings(row.fieldOuts)}</span>}
+              </div>
+            ))}
           {byPlayer.size === 0 && <div className="empty">No defensive assignments recorded.</div>}
         </div>
+        <p className="muted small" style={{ marginTop: 6 }}>Bench means here, healthy, and not in the field. Fix, "Who's here" on the game screen changes any of this.</p>
       </div>
 
       {box.warnings.length > 0 && (

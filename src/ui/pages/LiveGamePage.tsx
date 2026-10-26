@@ -3,8 +3,8 @@ import { useNavigate, useParams, Link } from 'react-router-dom';
 import { useGame, useEvents, usePlayerMap, useTeams, useSettings, useOnline } from '../hooks';
 import { appendEvent, undoLastEvent, insertEventAt, setGameStatus, db, playerName } from '../../db/db';
 import { replayGame, currentBatter, pitchDetailFor, type ReplayResult } from '../../engine/reducer';
-import type { GameEvent, Side, Position, PlateAppearanceEvent, Half, PitchResult, PAResult } from '../../engine/types';
-import { POSITION_LABEL, nowIso, outsToInnings } from '../../engine/types';
+import type { GameEvent, Side, Position, PlateAppearanceEvent, Half, PitchResult, PAResult, AvailabilityStatus } from '../../engine/types';
+import { POSITION_LABEL, AVAILABILITY_LABEL, nowIso, outsToInnings } from '../../engine/types';
 import { scorebookNotation } from '../../engine/propose';
 import { PAFlow, type PAPayload } from '../components/PAFlow';
 import { BaserunningFlow, DefenseSheet, FixSheet, EndGameSheet, type BRPayload, type PitchWas } from '../components/LiveSheets';
@@ -144,7 +144,19 @@ export function LiveGamePage() {
     pitchCount: (side: Side, pid: string, count: number) => guard(async () => { await appendEvent(gameId, { type: 'pitch_count', side, pitcherId: pid, count, source: 'manual' } as any); toast.show('Pitch count saved'); }),
     addNote: (text: string, playerId?: string) => guard(async () => { await appendEvent(gameId, { type: 'note', text, playerId } as any); toast.show('Note saved'); }),
     endHalf: (credit: boolean) => guard(async () => { await appendEvent(gameId, { type: 'half_inning_end', creditMissingOuts: credit } as any); toast.show('Half-inning ended'); }),
-    changeBatter: (side: Side, slot: number) => guard(async () => { await appendEvent(gameId, { type: 'state_correction', nextSlot: { side, slot }, reason: 'Changed batter' } as any); toast.show('Batter changed'); })
+    changeBatter: (side: Side, slot: number) => guard(async () => { await appendEvent(gameId, { type: 'state_correction', nextSlot: { side, slot }, reason: 'Changed batter' } as any); toast.show('Batter changed'); }),
+    setAvailability: (side: Side, playerId: string, status: AvailabilityStatus) => guard(async () => {
+      await appendEvent(gameId, { type: 'availability', side, playerId, status } as any);
+      if (status !== 'present') {
+        const pos = Number(Object.entries(st[side].defense).find(([, pid]) => pid === playerId)?.[0] ?? 0) as Position;
+        if (pos) {
+          await appendEvent(gameId, { type: 'defense_change', side, changes: [{ position: pos, playerId: null }], reason: status === 'injured' ? 'injury' : 'other' } as any);
+          toast.show(`${playerName(players.get(playerId), 'short')} marked ${AVAILABILITY_LABEL[status].toLowerCase()}. ${POSITION_LABEL[pos]} is open: tap Defense.`);
+          return;
+        }
+      }
+      toast.show(`${playerName(players.get(playerId), 'short')} marked ${AVAILABILITY_LABEL[status].toLowerCase()}`);
+    })
   };
 
   const inningLabel = `${st.half === 'top' ? 'Top' : 'Bot'} ${st.inning}`;
@@ -390,6 +402,8 @@ export function describeEvent(ev: GameEvent, players: Map<string, { firstName: s
       return `Game ended (${ev.reason.replace('_', ' ')})`;
     case 'note':
       return `Note: ${ev.text}`;
+    case 'availability':
+      return `${nm(ev.playerId)}: ${ev.status === 'present' ? 'here' : ev.status === 'injured' ? 'hurt' : ev.status === 'left' ? 'left early' : 'absent'}`;
     default:
       return (ev as any).type;
   }

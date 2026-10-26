@@ -2,6 +2,16 @@
 
 A running log, newest first. Keep adding to it; the point is that the next session starts from here.
 
+## 2026-10-26, availability and bench time (Deren: "I want to know if I'm paying for my kid to ride the pine")
+
+- Everyone on the roster is assumed present. The game freezes `rosterIds` on my team the first time lineups are saved (active, non-placeholder players plus anyone in the order or marked absent), so a player who leaves the team later still counts for the games he was on it, and a pickup counts only where he played.
+- New event `availability` (present, absent, injured, left) stamped at replay with the side's defensive outs and plate appearances so far. Expected time = outs while present. Bench = expected minus fielded. Absent games count against nothing. Hurt or gone stops the clock; "back in" restarts it. A player marked out who then fields or bats is counted as back from that moment with a warning in the record (the scorer forgot to mark him back; the time is real).
+- Setup: "Not here today?" chips under the batting order. Live: Fix, "Who's here" lists the roster with status pills; Hurt or Left early also vacates the player's position (reason injury) and toasts which position is open. Defense sheet never offers absent, hurt or gone players and says why.
+- Stats, Playing time tab: table with G, Abs, GP, GS, DNP, DNB, Avail, Field, Bench, Bench%, PA, PA share, sorted by bench share. Player page: "Showing up and getting in" tiles plus a line per game that was not plain full-time. Game summary: who played, who sat, including bench innings and "did not bat".
+- Unknown opponents are now "Player N", not "Batter N" (Deren: they are a whole player, not just a batter).
+- Bug found by the walkthrough script: position keys from `Object.entries` are strings; passing one to `defense_change` meant the interval never closed and the hurt player's innings kept running. Always `Number()` a position key. Same latent bug fixed in the lineup page slots.
+- Tests: 90 (availability.test.ts: present by default, bench math, hurt mid-game, late arrival, team report, back-in rule). Script: `scripts/availability.cjs` (absent at setup, two on the bench, hurt at SS with 1.1 recorded, bench sub shows SS 1.2 and bench 1.1, absent player not offered, summary and stats tab).
+
 ## 2026-10-26, pitch-by-pitch (Deren's feedback after trying the practice game)
 
 - Pitch logging is now the default way to score: Ball / Strike / Foul on the game screen, count shown by the batter, ball four opens the walk, strike three asks swinging or looking, the ball in play counts as a strike. Per-game switch "Log every pitch" (off = result-only scoring, nothing invented). Pitch events are their own log entries, so undo works pitch by pitch and the count survives closing the app.

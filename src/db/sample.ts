@@ -46,8 +46,8 @@ export async function loadSampleData(): Promise<{ finishedGameId: string; liveGa
   const oppPlayers = await db.players.where('teamId').equals(opp.id).toArray();
   const oppIds: string[] = [];
   for (let i = 1; i <= 9; i++) {
-    let p = oppPlayers.find((x) => x.lastName === `Batter ${i}`);
-    if (!p) p = await createPlaceholderPlayer(opp.id, `Batter ${i}`);
+    let p = oppPlayers.find((x) => x.lastName === `Player ${i}`);
+    if (!p) p = await createPlaceholderPlayer(opp.id, `Player ${i}`);
     oppIds.push(p.id);
   }
 
@@ -141,6 +141,11 @@ async function buildGame(
     opponentScoringDepth: 'full', notes: PRACTICE_TAG
   });
   const gid = game.id;
+  // Whole roster frozen for the game; whoever is not in the order is on the bench, except the last man, who is absent.
+  const roster = (await db.players.where('teamId').equals(teamId).toArray()).filter((p) => !p.isPlaceholder && p.status !== 'former').map((p) => p.id);
+  await db.games.update(gid, { rosterIds: roster });
+  const absent = roster.filter((id) => !order.includes(id)).slice(-1)[0];
+  if (absent) await appendEvent(gid, { type: 'availability', side: 'away', playerId: absent, status: 'absent' } as any);
   await appendEvent(gid, { type: 'lineup_set', side: 'away', slots: order.map((playerId, i) => ({ slot: i + 1, playerId, position: 0 })) } as any);
   await appendEvent(gid, { type: 'lineup_set', side: 'home', slots: oppIds.map((playerId, i) => ({ slot: i + 1, playerId, position: 0 })) } as any);
   await appendEvent(gid, { type: 'defense_set', side: 'away', assignments: defense } as any);

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import type { BaserunningKind, RunnerMove, Position, Player, Side, BaserunningEvent, Half, FieldingError, GameEndReason } from '../../engine/types';
-import { POSITION_LABEL } from '../../engine/types';
-import type { ReplayResult } from '../../engine/reducer';
+import type { BaserunningKind, RunnerMove, Position, Player, Side, BaserunningEvent, Half, FieldingError, GameEndReason, AvailabilityStatus } from '../../engine/types';
+import { POSITION_LABEL, AVAILABILITY_LABEL } from '../../engine/types';
+import { type ReplayResult, gameRoster, playerAvailability } from '../../engine/reducer';
 import { proposeBaserunning } from '../../engine/propose';
 import { Sheet } from './Sheet';
 import { Diamond } from './Diamond';
@@ -201,10 +201,13 @@ export function DefenseSheet({
     if ((draft[p] ?? null) !== (current[p] ?? null)) changes.push({ position: p, playerId: draft[p] ?? null });
   }
   const pitcherChanged = (draft[1] ?? null) !== (current[1] ?? null);
+  // Absent, hurt and gone players are not offered; mark them back in from Fix, "Who's here" first.
+  const availabilityOf = (pid: string) => (side === replay.game.mySide ? playerAvailability(replay, side, pid).status : 'present');
   const candidates = [
     ...lineup.map((s) => players.get(s.playerId)).filter((p): p is Player => !!p),
     ...roster.filter((p) => !lineup.some((s) => s.playerId === p.id) && p.status !== 'former')
-  ];
+  ].filter((p) => availabilityOf(p.id) === 'present');
+  const unavailable = roster.filter((p) => availabilityOf(p.id) !== 'present');
 
   return (
     <Sheet
@@ -243,6 +246,7 @@ export function DefenseSheet({
               );
             })}
           </div>
+          {unavailable.length > 0 && <p className="muted small" style={{ marginTop: 8 }}>Not offered: {unavailable.map((p) => `${playerName(p, 'short')} (${AVAILABILITY_LABEL[availabilityOf(p.id)].toLowerCase()})`).join(', ')}. Fix, "Who's here" to bring one back.</p>}
         </div>
       )}
       {changes.length > 0 && (
@@ -265,11 +269,14 @@ export interface FixActions {
   addNote: (text: string, playerId?: string) => void;
   endHalf: (creditMissingOuts: boolean) => void;
   changeBatter: (side: Side, slot: number) => void;
+  /** Mark a player hurt, gone, absent, or back. Hurt and gone also clear the player's position. */
+  setAvailability: (side: Side, playerId: string, status: AvailabilityStatus) => void;
 }
 
 export function FixSheet({ replay, players, teamNames, actions, onClose }: { replay: ReplayResult; players: Map<string, Player>; teamNames: Record<Side, string>; actions: FixActions; onClose: () => void }) {
   const st = replay.state;
-  const [tab, setTab] = useState<'score' | 'state' | 'pitches' | 'note'>('score');
+  const [tab, setTab] = useState<'score' | 'state' | 'pitches' | 'players' | 'note'>('score');
+  const [availPick, setAvailPick] = useState<string | null>(null);
   const [runs, setRuns] = useState(1);
   const [runSide, setRunSide] = useState<Side>(st.half === 'top' ? 'away' : 'home');
   const [reason, setReason] = useState('Missed a play');
@@ -291,8 +298,45 @@ export function FixSheet({ replay, players, teamNames, actions, onClose }: { rep
         <button className={`chip ${tab === 'score' ? 'on' : ''}`} onClick={() => setTab('score')}>Score</button>
         <button className={`chip ${tab === 'state' ? 'on' : ''}`} onClick={() => setTab('state')}>Inning / outs / runners</button>
         <button className={`chip ${tab === 'pitches' ? 'on' : ''}`} onClick={() => setTab('pitches')}>Pitch count</button>
+        <button className={`chip ${tab === 'players' ? 'on' : ''}`} onClick={() => setTab('players')}>Who's here</button>
         <button className={`chip ${tab === 'note' ? 'on' : ''}`} onClick={() => setTab('note')}>Note</button>
       </div>
+
+      {tab === 'players' && (() => {
+        const mySide = replay.game.mySide;
+        const roster = gameRoster(replay, mySide)
+          .map((id) => ({ id, p: players.get(id), av: playerAvailability(replay, mySide, id) }))
+          .filter((x) => x.p && !x.p.isPlaceholder)
+          .sort((a, b) => (parseInt(a.p?.number ?? '999', 10) || 999) - (parseInt(b.p?.number ?? '999', 10) || 999));
+        const onField = new Set(Object.values(st[mySide].defense));
+        const inOrder = new Set(st[mySide].lineup.map((sl) => sl.playerId));
+        return (
+          <>
+            <p className="muted small">Everyone on the roster is counted as here and available. Mark a player hurt or gone and his expected playing time stops there; mark him back when he returns. Hurt or gone clears his position, so tap Defense next.</p>
+            <div className="list">
+              {roster.map(({ id, p, av }) => (
+                <div key={id} className={`item tappable ${availPick === id ? 'selected' : ''}`} onClick={() => setAvailPick(availPick === id ? null : id)}>
+                  <div className="grow">
+                    <div className="title">{p?.number ? `#${p.number} ` : ''}{playerName(p, 'short')}</div>
+                    <div className="sub">{onField.has(id) ? 'in the field' : inOrder.has(id) ? 'batting, not in the field' : av.status === 'present' ? 'on the bench' : ''}</div>
+                  </div>
+                  <span className={`avail-pill ${av.status}`}>{AVAILABILITY_LABEL[av.status]}</span>
+                </div>
+              ))}
+              {roster.length === 0 && <div className="empty">No roster for this game yet.</div>}
+            </div>
+            {availPick && (
+              <div className="chips" style={{ marginTop: 10 }}>
+                {(['present', 'injured', 'left', 'absent'] as AvailabilityStatus[]).map((v) => (
+                  <button key={v} className={`chip ${playerAvailability(replay, mySide, availPick).status === v ? 'on' : ''}`} onClick={() => { actions.setAvailability(mySide, availPick, v); setAvailPick(null); onClose(); }}>
+                    {v === 'present' ? 'Here / back in' : v === 'injured' ? 'Hurt' : v === 'left' ? 'Left early' : 'Absent all game'}
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
+        );
+      })()}
 
       {tab === 'score' && (
         <>

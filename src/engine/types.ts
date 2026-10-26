@@ -43,7 +43,7 @@ export interface Player {
   status: PlayerStatus;
   /** True for the player whose development the owner is tracking (Eli). */
   isFocus?: boolean;
-  /** Placeholder opponents such as "Batter 4" or "#12" until a name is known. */
+  /** Placeholder opponents such as "Player 4" or "#12" until a name is known. */
   isPlaceholder?: boolean;
   /** Alternate spellings / imported names that map to this identity. */
   aliases: string[];
@@ -135,6 +135,11 @@ export interface Game {
   revision: number;
   /** Set when the game has been included in an export archive. */
   lastExportedAt?: ISODateTime;
+  /**
+   * My team's roster for this game, frozen when the game starts: everyone who could have played,
+   * including players marked absent. Availability is judged against this list.
+   */
+  rosterIds?: ID[];
   createdAt: ISODateTime;
   updatedAt: ISODateTime;
 }
@@ -277,7 +282,8 @@ export type GameEvent =
   | StateCorrectionEvent
   | NoteEvent
   | GameEndEvent
-  | HalfInningEndEvent;
+  | HalfInningEndEvent
+  | AvailabilityEvent;
 
 export interface EventBase {
   id: ID;
@@ -429,6 +435,24 @@ export interface HalfInningEndEvent extends EventBase {
   type: 'half_inning_end';
   /** If true, the missing outs are counted as defensive outs for playing time. */
   creditMissingOuts: boolean;
+}
+
+/** Availability of a rostered player. Everyone is present until an event says otherwise. */
+export type AvailabilityStatus = 'present' | 'absent' | 'injured' | 'left';
+export const AVAILABILITY_LABEL: Record<AvailabilityStatus, string> = {
+  present: 'Here', absent: 'Absent', injured: 'Hurt', left: 'Left early'
+};
+
+/**
+ * A player's availability changed: marked absent before the game, hurt or gone home
+ * mid-game, or back (arrived late, cleared to play). Expected playing time stops and
+ * starts at these points, so bench time is never counted against a kid who was not there.
+ */
+export interface AvailabilityEvent extends EventBase {
+  type: 'availability';
+  side: Side;
+  playerId: ID;
+  status: AvailabilityStatus;
 }
 
 // ---------------------------------------------------------------------------

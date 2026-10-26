@@ -15,6 +15,7 @@
  */
 
 import type {
+  AvailabilityStatus,
   Game, GameEvent, ID, Half, Side, Position, LineupSlot, PlateAppearanceEvent, BaserunningEvent,
   RunnerMove, PAResult, BattedBall, PitchDetail, FieldingRecord, Difficulty, Execution, GameEndReason,
   Destination, PitchResult
@@ -178,6 +179,8 @@ export interface RunLogEntry {
 
 export interface SideLiveState {
   lineup: LineupSlot[];
+  /** Batting order in force at the first pitch (players who started on offense). */
+  startingLineupIds: ID[];
   nextSlotIndex: number; // index into lineup (0-based)
   runs: number;
   runsByInning: number[]; // index = inning-1
@@ -212,6 +215,20 @@ export interface GameLiveState {
   pendingPitches: PitchResult[];
 }
 
+/** One availability change, stamped with where the game stood so expected playing time can be measured. */
+export interface AvailabilityLogEntry {
+  seq: number;
+  side: Side;
+  playerId: ID;
+  status: AvailabilityStatus;
+  /** The side's defensive outs when the change was recorded. */
+  atOuts: number;
+  /** The side's plate appearances when the change was recorded. */
+  atTeamPAs: number;
+  inning: number;
+  half: Half;
+}
+
 export interface ReplayResult {
   game: Game;
   state: GameLiveState;
@@ -221,6 +238,7 @@ export interface ReplayResult {
   intervals: DefenseInterval[];
   fieldingPlays: FieldingPlay[];
   runLog: RunLogEntry[];
+  availabilityLog: AvailabilityLogEntry[];
   warnings: string[];
   eventCount: number;
 }
@@ -290,6 +308,7 @@ export const BATTER_OUT_RESULTS: ReadonlySet<PAResult> = new Set([
 function emptySide(): SideLiveState {
   return {
     lineup: [],
+    startingLineupIds: [],
     nextSlotIndex: 0,
     runs: 0,
     runsByInning: [],
@@ -341,6 +360,19 @@ export function replayGame(game: Game, eventsIn: GameEvent[]): ReplayResult {
   const intervals: DefenseInterval[] = [];
   const fieldingPlays: FieldingPlay[] = [];
   const runLog: RunLogEntry[] = [];
+  const availabilityLog: AvailabilityLogEntry[] = [];
+  const availabilityNow = new Map<string, AvailabilityStatus>(); // side:playerId -> latest status
+  let currentSeq = 0;
+  /** A player marked absent, hurt or gone who then fields or bats is back; note it rather than lose the time. */
+  function ensurePresent(side: Side, playerId: ID, seq: number, how: string) {
+    const k = `${side}:${playerId}`;
+    const cur = availabilityNow.get(k) ?? 'present';
+    if (cur === 'present') return;
+    availabilityNow.set(k, 'present');
+    const ss = sideState(side);
+    availabilityLog.push({ seq, side, playerId, status: 'present', atOuts: ss.defensiveOuts, atTeamPAs: paLog.filter((p) => p.side === side).length, inning: state.inning, half: state.half });
+    warnings.push(`seq ${seq}: ${playerId} was marked ${cur} but ${how}; counted as back in from here`);
+  }
   const pitcherLines = new Map<string, PitcherLine>(); // key side:pitcherId
   /** errors-in-half snapshot at the moment each pitcher entered the current half (for reconstruction). */
   const pitcherEntryLostOuts = new Map<string, number>();
@@ -439,6 +471,7 @@ export function replayGame(game: Game, eventsIn: GameEvent[]): ReplayResult {
         }
       }
       ss.defense[position] = playerId;
+      ensurePresent(side, playerId, currentSeq, `took the field at ${position}`);
       openInterval(side, playerId, position, !state.started && ss.defensiveOuts === 0);
       if (position === 1) {
         const line = getPitcherLine(side, playerId);
@@ -703,6 +736,7 @@ export function replayGame(game: Game, eventsIn: GameEvent[]): ReplayResult {
   for (const ev of events) {
     if (ev.seq <= lastSeq) warnings.push(`duplicate or out-of-order seq ${ev.seq}`);
     lastSeq = ev.seq;
+    currentSeq = ev.seq;
     if (state.ended && ev.type !== 'note') {
       warnings.push(`seq ${ev.seq}: event recorded after game end`);
     }
@@ -738,6 +772,7 @@ export function replayGame(game: Game, eventsIn: GameEvent[]): ReplayResult {
         const ss = sideState(ev.side);
         ss.lineup = [...ev.slots].sort((a, b) => a.slot - b.slot);
         if (ss.nextSlotIndex >= ss.lineup.length) ss.nextSlotIndex = 0;
+        if (!state.started) ss.startingLineupIds = ss.lineup.map((sl) => sl.playerId);
         break;
       }
 
@@ -809,6 +844,7 @@ export function replayGame(game: Game, eventsIn: GameEvent[]): ReplayResult {
         const fielding = otherSide(batting);
         const bs = sideState(batting);
         const fs = sideState(fielding);
+        ensurePresent(batting, pa.batterId, ev.seq, 'came to bat');
         const expectedBatting = battingSide(state.half);
         if (batting !== expectedBatting) {
           warnings.push(`seq ${pa.seq}: ${batting} batted during the ${state.half} of inning ${state.inning}`);
@@ -1194,6 +1230,22 @@ export function replayGame(game: Game, eventsIn: GameEvent[]): ReplayResult {
         break;
       }
 
+      case 'availability': {
+        const ss = sideState(ev.side);
+        availabilityNow.set(`${ev.side}:${ev.playerId}`, ev.status);
+        availabilityLog.push({
+          seq: ev.seq,
+          side: ev.side,
+          playerId: ev.playerId,
+          status: ev.status,
+          atOuts: ss.defensiveOuts,
+          atTeamPAs: paLog.filter((p) => p.side === ev.side).length,
+          inning: state.inning,
+          half: state.half
+        });
+        break;
+      }
+
       case 'note':
         break;
 
@@ -1225,9 +1277,76 @@ export function replayGame(game: Game, eventsIn: GameEvent[]): ReplayResult {
     intervals,
     fieldingPlays,
     runLog,
+    availabilityLog,
     warnings,
     eventCount: events.length
   };
+}
+
+// ---------------------------------------------------------------------------
+// Availability: who was there, and for how much of the game
+// ---------------------------------------------------------------------------
+
+export interface PlayerAvailability {
+  side: Side;
+  playerId: ID;
+  /** Status at the end of the log (or now, for a live game). */
+  status: AvailabilityStatus;
+  /** Was the player ever marked absent, hurt or gone during this game. */
+  everAbsent: boolean;
+  everInjured: boolean;
+  everLeft: boolean;
+  /** Defensive outs of the side while the player was present (expected field time). */
+  availableOuts: number;
+  /** Plate appearances of the side while the player was present (expected batting chances). */
+  availableTeamPAs: number;
+}
+
+/** The roster a side is judged against for this game: the frozen roster for my side, otherwise everyone who appeared. */
+export function gameRoster(r: ReplayResult, side: Side): ID[] {
+  const ids = new Set<ID>();
+  if (side === r.game.mySide && r.game.rosterIds) for (const id of r.game.rosterIds) ids.add(id);
+  const ss = side === 'home' ? r.state.home : r.state.away;
+  for (const s of ss.lineup) ids.add(s.playerId);
+  for (const pid of Object.values(ss.defense)) if (pid) ids.add(pid);
+  for (const iv of r.intervals) if (iv.side === side) ids.add(iv.playerId);
+  for (const e of r.paLog) if (e.side === side) ids.add(e.batterId);
+  for (const a of r.availabilityLog) if (a.side === side) ids.add(a.playerId);
+  return [...ids];
+}
+
+/** Availability of one player for one game. Everyone is present until the log says otherwise. */
+export function playerAvailability(r: ReplayResult, side: Side, playerId: ID): PlayerAvailability {
+  const ss = side === 'home' ? r.state.home : r.state.away;
+  const endOuts = ss.defensiveOuts;
+  const endPAs = r.paLog.filter((p) => p.side === side).length;
+  let status: AvailabilityStatus = 'present';
+  let fromOuts = 0;
+  let fromPAs = 0;
+  let availableOuts = 0;
+  let availableTeamPAs = 0;
+  const out: PlayerAvailability = { side, playerId, status, everAbsent: false, everInjured: false, everLeft: false, availableOuts: 0, availableTeamPAs: 0 };
+  for (const a of r.availabilityLog) {
+    if (a.side !== side || a.playerId !== playerId) continue;
+    if (status === 'present') {
+      availableOuts += Math.max(0, a.atOuts - fromOuts);
+      availableTeamPAs += Math.max(0, a.atTeamPAs - fromPAs);
+    }
+    status = a.status;
+    fromOuts = a.atOuts;
+    fromPAs = a.atTeamPAs;
+    if (a.status === 'absent') out.everAbsent = true;
+    if (a.status === 'injured') out.everInjured = true;
+    if (a.status === 'left') out.everLeft = true;
+  }
+  if (status === 'present') {
+    availableOuts += Math.max(0, endOuts - fromOuts);
+    availableTeamPAs += Math.max(0, endPAs - fromPAs);
+  }
+  out.status = status;
+  out.availableOuts = availableOuts;
+  out.availableTeamPAs = availableTeamPAs;
+  return out;
 }
 
 // ---------------------------------------------------------------------------

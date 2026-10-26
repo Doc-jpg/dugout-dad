@@ -2,9 +2,9 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useGame, useEvents, usePlayers, useTeams, usePlayerMap } from '../hooks';
 import { appendEvent, createPlaceholderPlayer, createPlayer, db, playerName, updatePlayer } from '../../db/db';
-import type { LineupSlot, Position, Side, Player, DefenseSetEvent, LineupSetEvent } from '../../engine/types';
+import type { LineupSlot, Position, Side, Player, DefenseSetEvent, LineupSetEvent, AvailabilityEvent } from '../../engine/types';
 import { POSITION_LABEL, nowIso } from '../../engine/types';
-import { replayGame } from '../../engine/reducer';
+import { replayGame, gameRoster, playerAvailability } from '../../engine/reducer';
 import { Diamond, ALL_POSITIONS } from '../components/Diamond';
 import { Sheet, useToast } from '../components/Sheet';
 
@@ -24,6 +24,8 @@ export function LineupPage() {
   const toast = useToast();
   const [tab, setTab] = useState<'mine' | 'opp'>('mine');
   const [drafts, setDrafts] = useState<Record<Side, Draft>>({ home: { slots: [], defense: {} }, away: { slots: [], defense: {} } });
+  /** My players marked absent for this game (not on the bench: not here at all). */
+  const [absent, setAbsent] = useState<Set<string>>(new Set());
   const [loaded, setLoaded] = useState(false);
 
   // Seed drafts from the current replay state (if any)
@@ -34,6 +36,7 @@ export function LineupPage() {
       home: { slots: r.state.home.lineup.map((s) => ({ ...s })), defense: { ...r.state.home.defense } },
       away: { slots: r.state.away.lineup.map((s) => ({ ...s })), defense: { ...r.state.away.defense } }
     });
+    setAbsent(new Set(gameRoster(r, game.mySide).filter((id) => playerAvailability(r, game.mySide, id).status === 'absent')));
     setLoaded(true);
   }, [game, events, loaded]);
 
@@ -60,9 +63,22 @@ export function LineupPage() {
         const p = existing ?? (await createPlaceholderPlayer(tid, 'Pitcher'));
         d.defense = { ...d.defense, 1: p.id };
       }
-      const slots = d.slots.map((sl, i) => ({ slot: i + 1, playerId: sl.playerId, position: (Object.entries(d.defense).find(([, pid]) => pid === sl.playerId)?.[0] ?? 0) as unknown as Position }));
+      const slots = d.slots.map((sl, i) => ({ slot: i + 1, playerId: sl.playerId, position: Number(Object.entries(d.defense).find(([, pid]) => pid === sl.playerId)?.[0] ?? 0) as Position }));
       if (slots.length) await appendEvent<LineupSetEvent>(gameId, { type: 'lineup_set', side: s, slots } as any);
       if (Object.keys(d.defense).length) await appendEvent<DefenseSetEvent>(gameId, { type: 'defense_set', side: s, assignments: d.defense } as any);
+    }
+    // Freeze my roster for this game the first time it is saved: everyone who could have played,
+    // including the absent. Bench time and "did not play" are judged against this list.
+    const active = (await db.players.where('teamId').equals(game.teamId).toArray()).filter((p) => p.status !== 'former' && p.status !== 'inactive' && !p.isPlaceholder).map((p) => p.id);
+    const rosterIds = [...new Set([...(game.rosterIds ?? active), ...drafts[mySide].slots.map((sl) => sl.playerId), ...absent])];
+    await db.games.update(gameId, { rosterIds, updatedAt: nowIso() });
+    // Availability: write only the changes, so the log says when each player was marked.
+    const r = replayGame(game, events);
+    for (const id of rosterIds) {
+      const cur = playerAvailability(r, mySide, id).status;
+      const want = absent.has(id) ? 'absent' : 'present';
+      if (cur === want) continue;
+      if (want === 'absent' || cur === 'absent') await appendEvent<AvailabilityEvent>(gameId, { type: 'availability', side: mySide, playerId: id, status: want } as any);
     }
     if (game.status === 'setup') await db.games.update(gameId, { status: 'in_progress', updatedAt: nowIso() });
     nav(`/games/${gameId}/live`, { replace: true });
@@ -88,7 +104,7 @@ export function LineupPage() {
         </button>
       </div>
       {!myReady && tab === 'mine' && <div className="banner info">Add at least one batter and a pitcher to start. You can fix anything later.</div>}
-      <SideEditor key={side} side={side} teamId={teamId} teamName={team?.name ?? ''} isMine={tab === 'mine'} draft={draft} setDraft={setDraft} players={players} toast={toast.show} />
+      <SideEditor key={side} side={side} teamId={teamId} teamName={team?.name ?? ''} isMine={tab === 'mine'} draft={draft} setDraft={setDraft} players={players} toast={toast.show} absent={absent} setAbsent={setAbsent} />
       {toast.el}
     </div>
   );
@@ -102,7 +118,9 @@ function SideEditor({
   draft,
   setDraft,
   players,
-  toast
+  toast,
+  absent,
+  setAbsent
 }: {
   side: Side;
   teamId: string;
@@ -112,17 +130,25 @@ function SideEditor({
   setDraft: (d: Draft) => void;
   players: Map<string, Player>;
   toast: (m: string) => void;
+  absent: Set<string>;
+  setAbsent: (s: Set<string>) => void;
 }) {
   const roster = usePlayers(teamId);
   const [mode, setMode] = useState<'order' | 'defense'>('order');
   const [selPos, setSelPos] = useState<Position | null>(null);
   const [quick, setQuick] = useState('');
   const inOrder = new Set(draft.slots.map((s) => s.playerId));
+  const byNumber = (a: Player, b: Player) => (parseInt(a.number ?? '999', 10) || 999) - (parseInt(b.number ?? '999', 10) || 999);
   const available = roster
-    .filter((p) => !inOrder.has(p.id) && p.status !== 'former' && p.status !== 'inactive')
-    .sort((a, b) => (parseInt(a.number ?? '999', 10) || 999) - (parseInt(b.number ?? '999', 10) || 999));
-  const bench = roster.filter((p) => p.status === 'inactive');
-  void bench;
+    .filter((p) => !inOrder.has(p.id) && p.status !== 'former' && p.status !== 'inactive' && !absent.has(p.id))
+    .sort(byNumber);
+  /** My players not in the order: the bench, unless marked absent. */
+  const notInOrder = roster.filter((p) => !inOrder.has(p.id) && p.status !== 'former' && p.status !== 'inactive' && !p.isPlaceholder).sort(byNumber);
+  const toggleAbsent = (pid: string) => {
+    const next = new Set(absent);
+    if (next.has(pid)) next.delete(pid); else next.add(pid);
+    setAbsent(next);
+  };
 
   const addToOrder = (pid: string) => setDraft({ ...draft, slots: [...draft.slots, { slot: draft.slots.length + 1, playerId: pid, position: 0 }] });
   const remove = (pid: string) => {
@@ -169,7 +195,7 @@ function SideEditor({
   const generatePlaceholders = async (n: number) => {
     const slots = [...draft.slots];
     for (let i = slots.length; i < n; i++) {
-      const p = await createPlaceholderPlayer(teamId, `Batter ${i + 1}`);
+      const p = await createPlaceholderPlayer(teamId, `Player ${i + 1}`);
       slots.push({ slot: i + 1, playerId: p.id, position: 0 });
     }
     setDraft({ ...draft, slots });
@@ -237,7 +263,7 @@ function SideEditor({
                 </div>
               );
             })}
-            {draft.slots.length === 0 && <div className="empty">Tap players below to build the order{isMine ? '' : ', or generate unknown batters'}.</div>}
+            {draft.slots.length === 0 && <div className="empty">Tap players below to build the order{isMine ? '' : ', or generate unknown players'}.</div>}
           </div>
 
           {available.length > 0 && (
@@ -257,9 +283,28 @@ function SideEditor({
             </>
           )}
 
+          {isMine && notInOrder.length > 0 && (
+            <div className="card" style={{ marginTop: 14 }}>
+              <div className="section-title" style={{ marginTop: 0 }}>
+                <h3>Not here today?</h3>
+                <span className="muted small">{absent.size ? `${absent.size} absent` : 'everyone counted as here'}</span>
+              </div>
+              <p className="muted small" style={{ marginTop: 0 }}>Everyone on the roster counts as here and available. Tap a player who did not make it so no bench time is charged for this game. The rest of these are on the bench until you put them in.</p>
+              <div className="chips absent-chips">
+                {notInOrder.map((p) => (
+                  <button key={p.id} className={`chip ${absent.has(p.id) ? 'on struck' : ''}`} onClick={() => toggleAbsent(p.id)} aria-pressed={absent.has(p.id)}>
+                    {p.number ? `#${p.number} ` : ''}
+                    {playerName(p, 'short')}
+                    {absent.has(p.id) ? ' (absent)' : ''}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="card" style={{ marginTop: 14 }}>
             <div className="field" style={{ marginBottom: 8 }}>
-              <label>{isMine ? 'Add players not on the roster (pickups)' : 'Opponent batters: names, numbers, or both'}</label>
+              <label>{isMine ? 'Add players not on the roster (pickups)' : 'Opponent players: names, numbers, or both'}</label>
               <textarea className="input" rows={2} value={quick} onChange={(e) => setQuick(e.target.value)} placeholder={isMine ? '15 Pickup Player' : '#12\n#4 Smith\nJohn Doe'} />
             </div>
             <div className="row wrap">
@@ -269,15 +314,15 @@ function SideEditor({
               {!isMine && (
                 <>
                   <button className="btn sm" onClick={() => generatePlaceholders(9)}>
-                    Unknown lineup: 9 batters
+                    Unknown lineup: 9 players
                   </button>
                   <button className="btn sm" onClick={() => generatePlaceholders(draft.slots.length + 1)}>
-                    + 1 unknown batter
+                    + 1 unknown player
                   </button>
                 </>
               )}
             </div>
-            {!isMine && <p className="muted small" style={{ marginTop: 8 }}>Unknown batters can be renamed any time (Teams page) and keep every event recorded for them.</p>}
+            {!isMine && <p className="muted small" style={{ marginTop: 8 }}>Unknown players can be renamed any time (tap their name on the game screen, or the Teams page) and keep every event recorded for them.</p>}
           </div>
         </>
       )}

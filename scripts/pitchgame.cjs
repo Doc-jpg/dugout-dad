@@ -52,8 +52,8 @@ function expect(label, got, want) { if (JSON.stringify(got) !== JSON.stringify(w
   await page.click('role=button[name="Defense"s]');
   await page.click('text=Fill from batting order');
   await page.click('role=button[name=/Pitch Test/]');
-  await page.click('text=Unknown lineup: 9 batters');
-  await page.waitForSelector('text=Batter 9');
+  await page.click('text=Unknown lineup: 9 players');
+  await page.waitForSelector('text=Player 9');
   await page.click('text=Start game');
   await page.waitForSelector(B('In play'));
   expect('start', await read(), { away: 0, home: 0, inning: 'Top 1', outs: 0, on: '000', count: '0-0', pitches: null, strikePct: null });

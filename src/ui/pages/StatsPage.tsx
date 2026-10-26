@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAllReplays, useTeams, usePlayerMap, useSettings, useTournaments, useSnapshots, fmt3, fmt2, fmtPct } from '../hooks';
-import { battingLines, pitchingLines, fieldingLines, fieldingTotalsByPlayer, filterReplays, teamBattingTotals, teamRecord, playingTime, type BattingLine, type PitchingLine, type FieldingLine, type GameFilter } from '../../engine/stats';
+import { battingLines, pitchingLines, fieldingLines, fieldingTotalsByPlayer, filterReplays, teamBattingTotals, teamRecord, playingTime, availabilityReport, type BattingLine, type PitchingLine, type FieldingLine, type GameFilter, type AvailabilitySummary } from '../../engine/stats';
 import { snapshotBattingLine, snapshotPitchingLine, snapshotFieldingLines, canCombine, combineBatting } from '../../engine/snapshots';
 import { outsToInnings, POSITION_LABEL } from '../../engine/types';
 import type { ReplayResult } from '../../engine/reducer';
@@ -71,6 +71,22 @@ export function StatsPage() {
   const fieldingByPlayer = useMemo(() => fieldingTotalsByPlayer(fielding), [fielding]);
   const record = useMemo(() => (tid ? teamRecord(finals, tid) : null), [finals, tid]);
   const times = useMemo(() => (tid ? roster.filter((p) => p.status !== 'former').map((p) => playingTime(finals, p.id, tid)).filter((t) => t.totalOuts > 0).sort((a, b) => b.totalOuts - a.totalOuts) : []), [finals, roster, tid]);
+  const availability = useMemo(() => (tid ? availabilityReport(finals, tid).filter((a) => !players.get(a.playerId)?.isPlaceholder) : []), [finals, tid, players]);
+  const availCols: Column<AvailabilitySummary>[] = [
+    { key: 'name', label: 'Player', value: (r) => pn(r.playerId), align: 'left' },
+    { key: 'g', label: 'G', title: 'Games on the roster', value: (r) => r.gamesOnRoster },
+    { key: 'abs', label: 'Abs', title: 'Games absent', value: (r) => r.gamesAbsent },
+    { key: 'gp', label: 'GP', title: 'Games played (fielded or batted)', value: (r) => r.gamesPlayed },
+    { key: 'gs', label: 'GS', title: 'Games started', value: (r) => r.gamesStarted },
+    { key: 'dnp', label: 'DNP', title: 'Here but did not play', value: (r) => r.gamesDidNotPlay },
+    { key: 'dnb', label: 'DNB', title: 'Here but never in the batting order', value: (r) => r.gamesDidNotBat },
+    { key: 'avail', label: 'Avail', title: 'Innings available (here and healthy)', value: (r) => r.availableOuts, format: (v) => outsToInnings(v as number) },
+    { key: 'field', label: 'Field', title: 'Innings in the field', value: (r) => r.fieldOuts, format: (v) => outsToInnings(v as number) },
+    { key: 'bench', label: 'Bench', title: 'Innings on the bench while available', value: (r) => r.benchOuts, format: (v) => outsToInnings(v as number) },
+    { key: 'benchPct', label: 'Bench%', title: 'Bench innings over available innings', value: (r) => r.benchPct, format: (v) => fmtPct(v as number | null) },
+    { key: 'pa', label: 'PA', value: (r) => r.pa },
+    { key: 'paShare', label: 'PA share', title: 'His plate appearances per team plate appearance while he was here; nine batters rotating evenly sit near 11%', value: (r) => r.paShare, format: (v) => fmtPct(v as number | null) }
+  ];
 
   const importedBatting = useMemo(() => (snapshot ? snapshot.rows.filter((r) => r.playerId).map((r) => ({ ...snapshotBattingLine(r), playerId: r.playerId! })) : []), [snapshot]);
   const importedPitching = useMemo(() => (snapshot ? snapshot.rows.filter((r) => r.playerId).map((r) => ({ ...snapshotPitchingLine(r), playerId: r.playerId! })) : []), [snapshot]);
@@ -227,6 +243,11 @@ export function StatsPage() {
         </>
       )}
       {tab === 'time' && (
+        <>
+          <div className="section-title"><h3>Here, playing, or sitting</h3><span className="muted small">{availability.length} on the roster</span></div>
+          <StatsTable rows={availability} columns={availCols} rowKey={(r) => r.playerId} defaultSort="benchPct" highlight={(r) => r.playerId === settings.focusPlayerId} onRowClick={(r) => nav(`/stats/player/${r.playerId}`)} emptyText="No games with a roster yet." />
+          <p className="muted small" style={{ marginTop: 6, marginBottom: 14 }}>Everyone on the roster counts as here unless marked absent at game setup or hurt or gone from Fix during the game. Bench is innings available minus innings in the field. Games scored before this was added have no roster, so only players who appeared are counted for them.</p>
+          <div className="section-title"><h3>By position</h3></div>
         <div className="list">
           {times.map((t) => (
             <div key={t.playerId} className={`card ${t.playerId === settings.focusPlayerId ? 'focus' : ''}`} style={{ padding: 10, cursor: 'pointer' }} onClick={() => nav(`/stats/player/${t.playerId}`)}>
@@ -243,6 +264,7 @@ export function StatsPage() {
           ))}
           {times.length === 0 && <div className="empty">No defensive innings yet.</div>}
         </div>
+        </>
       )}
       {tab === 'imported' && snapshot && (
         <ImportedView snapshot={snapshot} pn={pn} importedBatting={importedBatting as any} importedPitching={importedPitching as any} battingCols={battingCols} pitchingCols={pitchingCols} focus={settings.focusPlayerId} />

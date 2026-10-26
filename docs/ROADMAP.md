@@ -4,6 +4,8 @@ Version 0.1.0 covers Phases 1 and 2 of the master prompt fully, most of Phase 3,
 
 ## Soon (after a few real weekends)
 
+- Availability: a "Bench report" for a tournament (who sat the most, by game), and a one-tap "Who's here" check on the Games list before the first pitch so absences are marked before setup.
+
 - **Pinch hitters and lineup substitutions from the live screen.** The event type exists (`lineup_change`) and courtesy/pinch runners replay correctly, but the only UI today is "Edit lineups" (which re-issues the whole order). A one-tap "sub in" sheet is the next live-screen feature.
 - **Opponent fielding sequences when we bat.** The fielder picker shows the opponent's alignment only if their defense was entered. Add a numbers-only keypad (6-3 typed as digits) for when it was not.
 - **Earned-run manual override** (`er_adjustment` event) for the cases the reconstruction cannot know.

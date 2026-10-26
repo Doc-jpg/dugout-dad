@@ -11,7 +11,8 @@ import type { Side, Position, Difficulty, Execution, Settings, PAResult, ID } fr
 import { outsToInnings } from './types';
 import {
   type ReplayResult, type PALogEntry, type PitcherLine, type FieldingPlay, type BaserunningLogEntry,
-  positionOuts, otherSide, AB_RESULTS, HIT_RESULTS, STRIKEOUT_RESULTS, WALK_RESULTS
+  positionOuts, otherSide, AB_RESULTS, HIT_RESULTS, STRIKEOUT_RESULTS, WALK_RESULTS,
+  gameRoster, playerAvailability
 } from './reducer';
 
 // ---------------------------------------------------------------------------
@@ -1097,4 +1098,118 @@ export function tournamentSummary(
     playingTime: pt,
     pitchingUsage
   };
+}
+
+// ---------------------------------------------------------------------------
+// Availability and bench time: was the kid there, and did he play
+// ---------------------------------------------------------------------------
+
+export type GameAvailabilityStatus = 'absent' | 'present' | 'injured' | 'left';
+
+export interface AvailabilityGameRow {
+  gameId: string;
+  date: string;
+  opponentTeamId: string;
+  /** Where the player ended the game: absent all game, present, hurt, or left early. */
+  status: GameAvailabilityStatus;
+  /** Defensive outs the team played while this player was available. */
+  availableOuts: number;
+  /** Outs this player spent at a position. */
+  fieldOuts: number;
+  /** Available outs minus field outs: time on the bench while healthy and present. */
+  benchOuts: number;
+  /** Team plate appearances while the player was available. */
+  availableTeamPAs: number;
+  pa: number;
+  /** Was the player in the batting order at any point. */
+  inOrder: boolean;
+  started: boolean;
+}
+
+export interface AvailabilitySummary {
+  playerId: string;
+  gamesOnRoster: number;
+  gamesAbsent: number;
+  gamesPresent: number;
+  /** Present and either fielded or batted. */
+  gamesPlayed: number;
+  gamesStarted: number;
+  /** Present for the whole game and never fielded or batted. */
+  gamesDidNotPlay: number;
+  /** Present while the team batted, never in the batting order. */
+  gamesDidNotBat: number;
+  gamesHurtOrLeft: number;
+  availableOuts: number;
+  fieldOuts: number;
+  benchOuts: number;
+  /** Bench outs over available outs. null until the player has been available for an out. */
+  benchPct: number | null;
+  availableTeamPAs: number;
+  pa: number;
+  /** Plate appearances per available team plate appearance. On a nine-man team that bats around evenly this sits near 1/9. */
+  paShare: number | null;
+  byGame: AvailabilityGameRow[];
+}
+
+/** One player's availability and bench time across games. Games where the player was not on the roster are skipped. */
+export function availabilitySummary(replays: ReplayResult[], playerId: string, teamId: string): AvailabilitySummary {
+  const out: AvailabilitySummary = {
+    playerId, gamesOnRoster: 0, gamesAbsent: 0, gamesPresent: 0, gamesPlayed: 0, gamesStarted: 0, gamesDidNotPlay: 0,
+    gamesDidNotBat: 0, gamesHurtOrLeft: 0, availableOuts: 0, fieldOuts: 0, benchOuts: 0, benchPct: null,
+    availableTeamPAs: 0, pa: 0, paShare: null, byGame: []
+  };
+  for (const r of sortByDateAsc(replays.filter((x) => sideForTeam(x, teamId) !== null))) {
+    const side = sideForTeam(r, teamId)!;
+    if (!gameRoster(r, side).includes(playerId)) continue;
+    const av = playerAvailability(r, side, playerId);
+    let fieldOuts = 0;
+    let starts = 0;
+    for (const po of positionOuts(r)) {
+      if (po.side !== side || po.playerId !== playerId || po.position === 0) continue;
+      fieldOuts += po.outs;
+      starts += po.starts;
+    }
+    const pa = r.paLog.filter((e) => e.side === side && e.batterId === playerId).length;
+    const ss = side === 'home' ? r.state.home : r.state.away;
+    const inOrder = ss.lineup.some((s) => s.playerId === playerId) || pa > 0;
+    const neverHere = av.everAbsent && av.availableOuts === 0 && av.availableTeamPAs === 0 && fieldOuts === 0 && pa === 0;
+    const status: GameAvailabilityStatus = neverHere ? 'absent' : av.status === 'injured' ? 'injured' : av.status === 'left' ? 'left' : 'present';
+    const benchOuts = Math.max(0, av.availableOuts - fieldOuts);
+    const row: AvailabilityGameRow = {
+      gameId: r.game.id, date: r.game.date, opponentTeamId: r.game.teamId === teamId ? r.game.opponentTeamId : r.game.teamId,
+      status, availableOuts: av.availableOuts, fieldOuts, benchOuts, availableTeamPAs: av.availableTeamPAs, pa, inOrder,
+      started: starts > 0 || ss.startingLineupIds.includes(playerId)
+    };
+    out.byGame.push(row);
+    out.gamesOnRoster += 1;
+    if (status === 'absent') { out.gamesAbsent += 1; continue; }
+    out.gamesPresent += 1;
+    if (status !== 'present') out.gamesHurtOrLeft += 1;
+    const played = fieldOuts > 0 || pa > 0 || inOrder;
+    if (played) out.gamesPlayed += 1; else if (av.availableOuts > 0 || av.availableTeamPAs > 0) out.gamesDidNotPlay += 1;
+    if (row.started) out.gamesStarted += 1;
+    if (!inOrder && av.availableTeamPAs > 0) out.gamesDidNotBat += 1;
+    out.availableOuts += av.availableOuts;
+    out.fieldOuts += Math.min(fieldOuts, av.availableOuts || fieldOuts);
+    out.benchOuts += benchOuts;
+    out.availableTeamPAs += av.availableTeamPAs;
+    out.pa += pa;
+  }
+  out.benchPct = ratio(out.benchOuts, out.availableOuts);
+  out.paShare = ratio(out.pa, out.availableTeamPAs);
+  return out;
+}
+
+/** Availability for everyone who was on the roster for any of these games, most bench time first. */
+export function availabilityReport(replays: ReplayResult[], teamId: string): AvailabilitySummary[] {
+  const ids = new Set<string>();
+  for (const r of replays) {
+    const side = sideForTeam(r, teamId);
+    if (!side) continue;
+    for (const id of gameRoster(r, side)) ids.add(id);
+  }
+  return [...ids]
+    .map((id) => availabilitySummary(replays, id, teamId))
+    .filter((s) => s.gamesOnRoster > 0)
+    .sort((a, b) => (b.benchPct ?? -1) - (a.benchPct ?? -1) || b.gamesAbsent - a.gamesAbsent);
 }

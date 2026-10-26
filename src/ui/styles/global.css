@@ -176,6 +176,10 @@ p { margin: 0 0 8px; }
 }
 .chip.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .chip.sm { min-height: 32px; padding: 4px 10px; font-size: 13px; }
+.chip.struck { background: var(--danger); border-color: var(--danger); color: #fff; text-decoration: line-through; }
+.avail-pill { font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 999px; background: var(--bg-elev); border: 1px solid var(--line); }
+.avail-pill.absent { background: var(--danger); color: #fff; border-color: var(--danger); }
+.avail-pill.injured, .avail-pill.left { background: var(--warn-bg); color: var(--warn); border-color: var(--warn); }
 
 /* Forms */
 .field { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }

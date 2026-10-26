@@ -118,7 +118,7 @@ export function playerName(p?: Player | null, style: 'full' | 'short' | 'last' |
   return [first, last].filter(Boolean).join(' ') || 'Unknown';
 }
 
-/** Create a placeholder opponent such as "#12" or "Batter 4" that can be renamed later. */
+/** Create a placeholder opponent such as "#12" or "Player 4" that can be renamed later. */
 export async function createPlaceholderPlayer(teamId: string, label: string, number?: string, database: DugoutDB = db) {
   return createPlayer({ teamId, firstName: '', lastName: label, number, isPlaceholder: true, status: 'regular' }, database);
 }

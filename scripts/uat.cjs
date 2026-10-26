@@ -61,6 +61,8 @@ const B = (t) => `role=button[name=/${t}/]`;
   await page.fill('input[placeholder="Tournament name"]', 'Fall Finale');
   await page.fill('input[placeholder="Optional"]', 'Edmond Field 3');
   await page.click('text=Enhanced');
+  await page.locator('label.switch input[type=checkbox]').first().uncheck(); // result-only scoring for this walkthrough
+  await page.waitForTimeout(300);
   await shot(page, 'new_game');
   await page.click('text=Next: lineups');
   await page.waitForSelector('text=Lineups');
@@ -76,8 +78,8 @@ const B = (t) => `role=button[name=/${t}/]`;
   await shot(page, 'defense_eli_cf');
   // Opponent: unknown 9
   await page.click('button:has-text("Tulsa")');
-  await page.click('text=Unknown lineup: 9 batters');
-  await page.waitForSelector('text=Batter 9');
+  await page.click('text=Unknown lineup: 9 players');
+  await page.waitForSelector('text=Player 9');
   await page.click('text=Start game');
   await page.waitForSelector(B('Record at-bat'));
   await shot(page, 'live_start');
@@ -193,14 +195,16 @@ const B = (t) => `role=button[name=/${t}/]`;
   await page2.click('text=+ New game');
   await page2.waitForSelector('text=New game');
   await page2.click('text=Home (bat second)');
+  await page2.locator('label.switch input[type=checkbox]').first().uncheck();
+  await page2.waitForTimeout(300);
   await page2.click('text=Next: lineups');
   await page2.waitForSelector('text=Lineups');
   for (let i = 0; i < 9; i++) await page2.locator('.add-chips .chip').first().click();
   await page2.click(X('Defense'));
   await page2.click('text=Fill from batting order');
   await page2.click('button:has-text("Tulsa")');
-  await page2.click('text=Unknown lineup: 9 batters');
-  await page2.waitForSelector('text=Batter 9');
+  await page2.click('text=Unknown lineup: 9 players');
+  await page2.waitForSelector('text=Player 9');
   await page2.click('text=Start game');
   await page2.waitForSelector(B('Record at-bat'));
   for (let i = 0; i < 3; i++) {

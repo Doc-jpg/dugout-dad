@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useAllReplays, usePlayerMap, useSettings, useTeams, useSnapshots, useTournaments, fmt3, fmt2, fmtPct, fmtDate } from '../hooks';
-import { battingLines, pitchingLines, fieldingLines, playingTime, filterReplays, teamDefensiveOuts, type BattingLine, type FieldingLine } from '../../engine/stats';
+import { battingLines, pitchingLines, fieldingLines, playingTime, availabilitySummary, filterReplays, teamDefensiveOuts, type BattingLine, type FieldingLine } from '../../engine/stats';
 import { snapshotBattingLine, snapshotFieldingLines, snapshotPitchingLine } from '../../engine/snapshots';
 import { POSITION_LABEL, POSITION_NAME, outsToInnings } from '../../engine/types';
 import { playerName } from '../../db/db';
@@ -27,6 +27,7 @@ export function PlayerPage() {
   const pitching = useMemo(() => pitchingLines(filtered, { teamId, eraInnings: settings.defaultEraInnings || 7 }).find((l) => l.playerId === playerId), [filtered, teamId, playerId, settings.defaultEraInnings]);
   const fielding = useMemo(() => fieldingLines(filtered, { teamId }).filter((l) => l.playerId === playerId).sort((a, b) => b.outs - a.outs), [filtered, teamId, playerId]);
   const time = useMemo(() => (teamId ? playingTime(filtered, playerId, teamId) : null), [filtered, playerId, teamId]);
+  const avail = useMemo(() => (teamId ? availabilitySummary(filtered, playerId, teamId) : null), [filtered, playerId, teamId]);
   const snapshot = snapshots.find((s) => s.teamId === teamId);
   const snapRow = snapshot?.rows.find((r) => r.playerId === playerId);
   const impBat = snapRow ? snapshotBattingLine(snapRow) : null;
@@ -130,6 +131,25 @@ export function PlayerPage() {
         </div>
       ) : <div className="empty">No defensive innings scored in this view.</div>}
       <p className="muted small">Errors are attached to the position being played when they happened. Routine, difficult and missed-expected are your own observations and are labeled by sample size.</p>
+
+      {avail && avail.gamesOnRoster > 0 && (
+        <>
+          <div className="section-title"><h3>Showing up and getting in</h3><span className="muted small">{avail.gamesOnRoster} game{avail.gamesOnRoster === 1 ? '' : 's'} on the roster</span></div>
+          <div className="kpi">
+            <div className="k"><div className="v">{avail.gamesPresent}</div><div className="l">here{avail.gamesAbsent ? `, ${avail.gamesAbsent} absent` : ''}</div></div>
+            <div className="k"><div className="v">{avail.gamesStarted}</div><div className="l">starts of {avail.gamesPresent} games here</div></div>
+            <div className="k"><div className="v">{outsToInnings(avail.benchOuts)}</div><div className="l">bench innings ({fmtPct(avail.benchPct)} of {outsToInnings(avail.availableOuts)} available)</div></div>
+            <div className="k"><div className="v">{avail.gamesDidNotPlay + avail.gamesDidNotBat}</div><div className="l">{avail.gamesDidNotPlay} did not play, {avail.gamesDidNotBat} did not bat</div></div>
+            <div className="k"><div className="v">{fmtPct(avail.paShare)}</div><div className="l">share of team PA while here (even nine is 11%)</div></div>
+            {avail.gamesHurtOrLeft > 0 && <div className="k"><div className="v">{avail.gamesHurtOrLeft}</div><div className="l">hurt or left early</div></div>}
+          </div>
+          {avail.byGame.some((g) => g.status !== 'present' || g.benchOuts > 0 || !g.inOrder) && (
+            <p className="muted small" style={{ marginTop: 6 }}>
+              {avail.byGame.filter((g) => g.status !== 'present' || g.benchOuts > 0 || !g.inOrder).map((g) => `${fmtDate(g.date)}: ${g.status === 'absent' ? 'absent' : [g.status === 'injured' ? 'hurt' : g.status === 'left' ? 'left early' : null, g.benchOuts > 0 ? `bench ${outsToInnings(g.benchOuts)}` : null, !g.inOrder && g.availableTeamPAs > 0 ? 'did not bat' : null].filter(Boolean).join(', ')}`).join(' · ')}
+            </p>
+          )}
+        </>
+      )}
 
       {time && time.totalOuts > 0 && (
         <>
